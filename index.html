@@ -1,0 +1,1188 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <title>지도시스템</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.fullscreen/Control.FullScreen.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.fullscreen/Control.FullScreen.js"></script>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      display: flex;
+      gap: 20px;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+      height: 100vh; /* 전체 화면 높이 */
+      box-sizing: border-box;
+    }
+
+    #left-container {
+      flex: 1 1 45%;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      overflow-y: auto;
+      border: 1px solid #ccc;
+      padding: 15px;
+      border-radius: 8px;
+      max-height: 100vh;
+    }
+
+    #right-container {
+      flex: 1 1 55%;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid #ccc;
+      padding: 15px;
+      border-radius: 8px;
+      box-sizing: border-box;
+      max-height: 100vh;
+    }
+
+    h3, h4 {
+      margin: 20px 0 10px 0;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      table-layout: fixed;
+    }
+
+    thead th {
+      border: 1px solid #999;
+      padding: 6px 10px;
+      text-align: center;
+      background: #f0f0f0;
+      font-weight: bold;
+      word-break: break-word;
+    }
+
+    tbody td {
+      border: 1px solid #999;
+      padding: 6px 10px;
+      word-break: break-word;
+      text-align: center;
+      cursor: pointer;
+    }
+
+    tbody tr:hover {
+      background-color: #eef;
+    }
+
+    .table-body-wrapper {
+      max-height: 40vh;
+      overflow-y: auto;
+      border: 1px solid #999;
+      border-radius: 4px;
+    }
+
+    /* 검색결과에만 높이 제한 적용 */
+    .table-body-wrapper.address-table {
+      max-height: 20vh;
+      overflow-y: auto;
+      border: 1px solid #999;
+      border-radius: 4px;
+    }
+
+    /* 선택 리스트는 제한 없음 */
+    .table-body-wrapper.selected-table {
+      max-height: none;
+      overflow-y: visible;
+      border: 1px solid #999;
+      border-radius: 4px;
+    }
+
+    input[type="text"], input[type="file"], button {
+      margin: 4px 0;
+      padding: 6px 10px;
+      font-size: 14px;
+      border-radius: 4px;
+      border: 1px solid #999;
+    }
+
+    button {
+      cursor: pointer;
+      background: #007bff;
+      color: white;
+      border: none;
+      transition: background-color 0.3s;
+    }
+
+    button:hover {
+      background: #0056b3;
+    }
+
+    #map {
+      flex-grow: 1;
+      height: 100%; /* 부모 높이 꽉 채우기 */
+      border: 1px solid #999;
+      border-radius: 8px;
+      min-height: 0; /* 기존 min-height 해제 */
+    }
+
+    .name-list-label {
+      display: inline;
+      white-space: nowrap;
+      padding: 2px 6px;
+      background: rgba(255,255,255,0.8);
+      border-radius: 4px;
+      border: 1px solid #333;
+      font-weight: bold;
+      font-size: 20px;
+      line-height: 1.3em;
+      color: black;
+      pointer-events: none;
+      user-select: none;
+      position: absolute;
+      z-index: 10;
+    }
+
+    #loading-indicator {
+      display: none;
+      margin: 10px 0;
+      font-weight: bold;
+      color: #d33;
+    }
+
+    /* 비밀번호 모달 스타일 */
+    #password-modal {
+      display: none;
+      position: fixed;
+      z-index: 10000;
+      left: 0; top: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      justify-content: center;
+      align-items: center;
+    }
+
+    #password-modal.flex {
+      display: flex;
+    }
+
+    #password-modal .modal-box {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      width: 300px;
+      text-align: center;
+    }
+
+    #password-modal input {
+      width: 100%;
+      padding: 8px;
+      margin-top: 10px;
+      font-size: 16px;
+    }
+
+    #password-modal button {
+      padding: 6px 12px;
+      margin: 10px 5px 0;
+      font-size: 14px;
+    }
+
+    #address-convert-area {
+      border: 2px solid #007bff;
+      background-color: #e6f0ff;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0,123,255,0.3);
+    }
+
+    #address-convert-area h3 {
+      color: #0056b3;
+      font-weight: 700;
+    }
+
+    button#clear-search-result,
+    button#clear-selected {
+      background-color: #f8d7da; /* 연한 분홍색 배경 */
+      color: #842029; /* 진한 붉은색 글씨 */
+      border: 1px solid #f5c2c7; /* 연한 붉은 테두리 */
+    }
+
+    button#clear-search-result:hover,
+    button#clear-selected:hover {
+      background-color: #f5c2c7; /* 약간 더 진한 분홍 배경 */
+      color: #6c1a21;
+    }
+
+    /* 네비 모달 스타일 */
+    .nav-modal {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.6);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+    }
+    .nav-modal.hidden {
+      display: none;
+    }
+    .modal-content {
+      background: white;
+      padding: 20px 30px;
+      border-radius: 10px;
+      text-align: center;
+      width: 280px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    }
+    .modal-content h3 {
+      margin-bottom: 10px;
+      font-size: 18px;
+    }
+    .modal-content p {
+      font-size: 14px;
+      margin-bottom: 20px;
+      word-break: break-word;
+    }
+    .nav-buttons button {
+      margin: 5px;
+      padding: 8px 12px;
+      font-size: 14px;
+      border: none;
+      border-radius: 6px;
+      background-color: #007bff;
+      color: white;
+      cursor: pointer;
+    }
+    .nav-buttons button:hover {
+      background-color: #0056b3;
+    }
+    .nav-buttons button#nav-cancel {
+      background-color: #ccc;
+      color: #333;
+    }
+
+    /* 각 컬럼 너비 고정 */
+    #address-table thead th:nth-child(1), #selected-table thead th:nth-child(1) { width: 30%; }
+    #address-table thead th:nth-child(2), #selected-table thead th:nth-child(2) { width: 40%; }
+    #address-table thead th:nth-child(3), #selected-table thead th:nth-child(3) { width: 15%; }
+    #address-table thead th:nth-child(4), #selected-table thead th:nth-child(4) { width: 15%; }
+
+    /* 모바일 대응 */
+    @media (max-width: 768px) {
+      body {
+        flex-direction: column;
+        padding: 10px;
+        height: 100vh;
+      }
+      #right-container, #left-container {
+        flex: none;
+        width: 100%;
+        max-height: none;
+        height: auto;
+      }
+      #right-container {
+        order: -1; /* 지도를 위로 올림 */
+        height: 50vh; /* 지도 영역 높이 고정 */
+        padding: 10px;
+      }
+      #map {
+        height: 100%; /* 부모 높이 꽉 채움 */
+        min-height: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="left-container">
+    <!-- 주소만 있는 엑셀 업로드 → 위도경도 변환 후 다운로드 -->
+    <div class="container" id="address-convert-area">
+      <h3>📁 주소만 있는 엑셀 업로드 → 위도경도 변환 후 다운로드</h3>
+      <input type="file" id="input-excel-addr" accept=".xlsx,.xls" />
+      <button id="convert-download">변환 후 엑셀 다운로드</button>
+      <div id="loading-indicator">주소 변환 중... 잠시만 기다려 주세요.</div>
+    </div>
+
+    <!-- 좌표 포함 엑셀 업로드 + 검색 + 선택 리스트 -->
+    <div class="container" style="flex-grow: 1; display: flex; flex-direction: column;">
+      <h3>📁 좌표 포함 엑셀 업로드 + 검색</h3>
+      <input type="file" id="input-excel" accept=".xlsx,.xls" />
+      <input type="text" id="search-input" placeholder="🔍 업체명 검색" />
+
+      <h4>검색 결과 (클릭하여 선택)</h4>
+      <button id="select-all-search-results">검색결과 일괄 추가(선택된 리스트에 추가)</button>
+      <button id="clear-search-result">검색결과 초기화</button>
+      <div class="table-body-wrapper address-table">
+        <table id="address-table">
+          <thead>
+            <tr>
+              <th>업체명</th>
+              <th>주소</th>
+              <th>위도</th>
+              <th>경도</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <h4>선택된 리스트 (클릭하면 삭제)</h4>
+      <button id="download-selected">선택 리스트 엑셀 다운로드</button>
+      <button id="clear-selected">선택 리스트 초기화</button>
+      <div class="table-body-wrapper selected-table">
+        <table id="selected-table">
+          <thead>
+            <tr>
+              <th>업체명</th>
+              <th>주소</th>
+              <th>위도</th>
+              <th>경도</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="right-container">
+    <h3>📍 지도</h3>
+    <button id="locate-btn" style="margin-bottom:10px;">내 위치 표시</button>
+    <div id="map"></div>
+  </div>
+
+  <!-- 비밀번호 입력 모달 -->
+  <div id="password-modal">
+    <div class="modal-box">
+      <h3>비밀번호 입력</h3>
+      <input type="password" id="password-input" placeholder="비밀번호 입력" />
+      <p id="password-error" style="color: red; display: none; margin-top: 5px;">비밀번호가 틀렸습니다.</p>
+      <button id="password-submit">확인</button>
+      <button id="password-cancel">취소</button>
+    </div>
+  </div>
+
+  <!-- 네비 선택 모달 -->
+  <div id="nav-modal" class="nav-modal hidden">
+    <div class="modal-content">
+      <h3>길찾기 앱 선택</h3>
+      <p id="nav-target-text"></p>
+      <div class="nav-buttons">
+        <button id="nav-naver">네이버 지도</button>
+        <button id="nav-tmap">티맵</button>
+        <button id="nav-cancel">취소</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let polylineLayer = null;  // 여기서 선언
+    let navTargetName = "";
+    let navTargetAddress = "";
+
+    // 내회사 위치
+    const myCompany = {
+      name: "칼라정보기술",
+      address: "경기도 수원시 영통구 신원로 55",
+      lat: 37.2487505616809,
+      lng: 127.047853564414
+    };
+
+    // 좌표 포함 데이터, 선택된 데이터
+    let fullData = [];
+    let selectedData = [];
+
+    // 주소만 변환용 데이터
+    let addrOnlyData = [];
+
+    // UI 요소
+    const inputExcel = document.getElementById('input-excel');
+    const searchInput = document.getElementById('search-input');
+    const tbody = document.querySelector('#address-table tbody');
+    const selectedTbody = document.querySelector('#selected-table tbody');
+    const downloadBtn = document.getElementById('download-selected');
+
+    const inputExcelAddr = document.getElementById('input-excel-addr');
+    const convertBtn = document.getElementById('convert-download');
+    const loadingIndicator = document.getElementById('loading-indicator');
+
+    // 비밀번호 모달 관련 요소
+    const passwordModal = document.getElementById('password-modal');
+    const passwordInput = document.getElementById('password-input');
+    const passwordSubmit = document.getElementById('password-submit');
+    const passwordCancel = document.getElementById('password-cancel');
+    const passwordError = document.getElementById('password-error');
+
+    // 올바른 비밀번호 설정
+    const correctPassword = '123123'; // 원하는 비밀번호로 변경
+
+
+
+    // 지도 초기화
+    const map = L.map('map', { 
+      fullscreenControl: true,
+      minZoom: 9,
+      maxZoom: 16
+    }).setView([myCompany.lat, myCompany.lng], 11);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const markersGroup = L.layerGroup().addTo(map);
+
+    if (!map.getPane('labelPane')) {
+      map.createPane('labelPane');
+      map.getPane('labelPane').style.zIndex = 650;
+    }
+
+    // 내회사 마커 (붉은 원)
+    const myCompanyIcon = L.divIcon({
+      className: '',
+      html: `<div style="
+        width: 12px;
+        height: 12px;
+        background: red;
+        border: 3px solid white;
+        border-radius: 50%;
+        box-shadow: 0 0 8px 2px rgba(255,0,0,0.7);
+      "></div>`,
+      iconSize: [30, 30],
+      iconAnchor: [15, 15],
+      popupAnchor: [0, -15]
+    });
+
+    const myCompanyMarker = L.marker([myCompany.lat, myCompany.lng], {
+      title: myCompany.name,
+      icon: myCompanyIcon,
+      zIndexOffset: 1000
+    }).addTo(map);
+
+
+
+
+
+    // 내비연결 코드
+    // 모바일 환경 감지 함수
+    function isMobile() {
+      return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    }
+
+    // 내비연결 모달 열기
+    function openNavModal(name, address) {
+      console.log("openNavModal 호출됨:", name, address);
+      navTargetName = name;
+      navTargetAddress = address;
+      document.getElementById("nav-target-text").innerHTML = `${name}<br>${address}`;
+      document.getElementById("nav-modal").classList.remove("hidden");
+    }
+
+    // 네이버 내비 연결
+    document.getElementById("nav-naver").addEventListener("click", () => {
+      const query = encodeURIComponent(navTargetAddress || navTargetName);
+      const url = `https://map.naver.com/v5/search/${query}`;
+      window.open(url, "_blank");
+      closeNavModal();
+    });
+
+    // 티맵 내비 연결
+    document.getElementById("nav-tmap").addEventListener("click", () => {
+      const query = encodeURIComponent(navTargetAddress || navTargetName);
+
+      if (isMobile() && navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+
+            // 티맵 앱 내비 호출 URI: 출발지 좌표 포함
+            const url = `tmap://route?goalname=${query}&goalx=&goaly=&startx=${lng}&starty=${lat}&appname=com.example.app`;
+
+            window.open(url, "_blank");
+            closeNavModal();
+          },
+          (err) => {
+            // 위치 못받으면 그냥 티맵 검색 화면 호출
+            const url = `tmap://search?name=${query}`;
+            window.open(url, "_blank");
+            closeNavModal();
+          }
+        );
+      } else {
+        // PC는 티맵 웹 내비 없으니 네이버 지도 웹으로 우회
+        const url = `https://map.naver.com/v5/search/${query}`;
+        window.open(url, "_blank");
+        closeNavModal();
+      }
+    });
+
+    // 취소 버튼
+    document.getElementById("nav-cancel").addEventListener("click", () => {
+      closeNavModal();
+    });
+
+    // 모달 닫기
+    function closeNavModal() {
+      document.getElementById("nav-modal").classList.add("hidden");
+    }
+
+
+
+
+    // 마커 그룹핑 함수
+    function getPixelThreshold() {
+      return 30; // 픽셀 기준 (필요시 조정)
+    }
+    function groupMarkersByProximity(locs, map, pixelThreshold) {
+      const groups = [];
+      const visited = new Array(locs.length).fill(false);
+      for (let i = 0; i < locs.length; i++) {
+        if (visited[i]) continue;
+        visited[i] = true;
+        const base = locs[i];
+        const basePoint = map.latLngToLayerPoint([base.lat, base.lng]);
+        const group = [base];
+        for (let j = i + 1; j < locs.length; j++) {
+          if (visited[j]) continue;
+          const comp = locs[j];
+          const compPoint = map.latLngToLayerPoint([comp.lat, comp.lng]);
+          if (basePoint.distanceTo(compPoint) <= pixelThreshold) {
+            visited[j] = true;
+            group.push(comp);
+          }
+        }
+        groups.push(group);
+      }
+      return groups;
+    }
+
+    // 좌표 포함 데이터 테이블 렌더링
+    function renderTable(data) {
+      tbody.innerHTML = '';
+      data.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${row.name}</td><td>${row.address || ''}</td><td>${row.lat}</td><td>${row.lng}</td>`;
+        tr.addEventListener('click', () => addSelected(row));
+        tbody.appendChild(tr);
+      });
+    }
+    // 선택된 리스트 렌더링
+    function renderSelected() {
+      selectedTbody.innerHTML = '';
+      selectedData.forEach((row, idx) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${row.name}</td><td>${row.address || ''}</td><td>${row.lat}</td><td>${row.lng}</td>`;
+        tr.addEventListener('click', () => removeSelected(idx));
+        selectedTbody.appendChild(tr);
+      });
+      refreshMap();
+    }
+
+    // 좌표 포함 엑셀 업로드
+    inputExcel.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = evt => {
+        const data = new Uint8Array(evt.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        fullData = jsonData.slice(1).map(row => ({
+          name: row[0] || '',
+          address: row[1] || '',
+          lat: row[2] !== undefined ? parseFloat(row[2]) || 0 : 0,
+          lng: row[3] !== undefined ? parseFloat(row[3]) || 0 : 0
+        }));
+        renderTable(fullData);
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+    // 검색 기능
+    searchInput.addEventListener('input', function() {
+      const keyword = this.value.trim().toLowerCase();
+      if (!keyword) {
+        renderTable(fullData);
+        return;
+      }
+      const filtered = fullData.filter(row => row.name.toLowerCase().includes(keyword));
+      renderTable(filtered);
+    });
+
+    // 지도 갱신
+    async function refreshMap() {
+      markersGroup.clearLayers();
+      myCompanyMarker.addTo(map);
+
+      const zoom = map.getZoom();
+      const threshold = getPixelThreshold(zoom);
+      const grouped = groupMarkersByProximity(selectedData, map, threshold);
+
+      const baseOffset = 15;
+
+      const markersWithPos = [];
+
+      for (const group of grouped) {
+        // 그룹 내 모든 업체 이름과 주소를 팝업 내용으로 만듦, 각각의 내임태그에 내비연결 기능 추가
+        const popupContent = group.map(item => `
+          <div class="nav-link" 
+              data-name="${item.name}" 
+              data-address="${item.address || ''}"
+              style="cursor:pointer; color:#007bff; font-weight:bold;">
+            ${item.name}<br/>
+            <span>${item.address || '주소 없음'}</span>
+          </div>
+        `).join('<hr>');
+
+        // 그룹 기준 위치의 첫 업체
+        const base = group[0];
+
+        // 실제 마커 (기준 위치에 마커 생성)
+        const realMarker = L.marker([base.lat, base.lng]).addTo(markersGroup);
+        realMarker.bindPopup(popupContent);
+
+        // 팝업 열릴 때 클릭 이벤트 연결 (실제 마커)
+        realMarker.on('popupopen', (e) => {
+          const popupEl = e.popup.getElement();
+          popupEl.querySelectorAll('.nav-link').forEach(el => {
+            el.addEventListener('click', () => {
+              const name = el.getAttribute('data-name');
+              const address = el.getAttribute('data-address');
+              openNavModal(name, address);
+            });
+          });
+        });
+
+        // 이름 라벨용 마커 생성
+        const html = group.map(i => i.name).join('<br />');
+        const icon = L.divIcon({
+          className: 'name-list-label',
+          html,
+          iconSize: null,
+          iconAnchor: [0, 20]
+        });
+
+        let pos = map.latLngToLayerPoint([base.lat, base.lng]).add([baseOffset, 0]);
+        const labelMarker = L.marker(map.layerPointToLatLng(pos), {
+          icon,
+          interactive: true,
+          pane: 'labelPane'
+        }).addTo(markersGroup);
+
+        labelMarker.bindPopup(popupContent);
+
+        // 팝업 열릴 때 클릭 이벤트 연결 (라벨 마커)
+        labelMarker.on('popupopen', (e) => {
+          const popupEl = e.popup.getElement();
+          popupEl.querySelectorAll('.nav-link').forEach(el => {
+            el.addEventListener('click', () => {
+              const name = el.getAttribute('data-name');
+              const address = el.getAttribute('data-address');
+              openNavModal(name, address);
+            });
+          });
+        });
+
+        await new Promise(r => setTimeout(r, 0));
+
+        const el = labelMarker.getElement();
+        const width = el.offsetWidth;
+        const height = el.offsetHeight;
+
+        markersWithPos.push({ marker: labelMarker, pos, width, height });
+      }
+
+      function getBox(m) {
+        return {
+          left: m.pos.x - m.width / 2,
+          right: m.pos.x + m.width / 2,
+          top: m.pos.y - m.height,
+          bottom: m.pos.y
+        };
+      }
+      function isOverlap(a, b) {
+        return !(
+          a.right < b.left ||
+          a.left > b.right ||
+          a.bottom < b.top ||
+          a.top > b.bottom
+        );
+      }
+      let moved;
+      do {
+        moved = false;
+        for (let i = 0; i < markersWithPos.length; i++) {
+          for (let j = i + 1; j < markersWithPos.length; j++) {
+            const a = markersWithPos[i];
+            const b = markersWithPos[j];
+            const boxA = getBox(a);
+            const boxB = getBox(b);
+
+            if (isOverlap(boxA, boxB)) {
+              moved = true;
+              let dx = (boxB.left + b.width / 2) - (boxA.left + a.width / 2);
+              let dy = (boxB.top + b.height / 2) - (boxA.top + a.height / 2);
+              if (dx === 0 && dy === 0) {
+                dx = 1;
+                dy = 1;
+              }
+              const dist = Math.sqrt(dx * dx + dy * dy);
+              dx = (dx / dist) * baseOffset;
+              dy = (dy / dist) * baseOffset;
+              a.pos = a.pos.subtract([dx, dy]);
+              b.pos = b.pos.add([dx, dy]);
+            }
+          }
+        }
+        await new Promise(r => setTimeout(r, 0));
+      } while (moved);
+
+      // 기존 폴리라인 제거
+      if (polylineLayer) {
+        map.removeLayer(polylineLayer);
+        polylineLayer = null;
+      }
+
+      // labelLinesGroup 레이어 그룹 초기화 또는 생성
+      if (window.labelLinesGroup) {
+        window.labelLinesGroup.clearLayers();
+      } else {
+        window.labelLinesGroup = L.layerGroup().addTo(map);
+      }
+
+      // 마커-라벨 연결선 그리기
+      markersWithPos.forEach(({ pos }, i) => {
+        const originalLatLng = L.latLng(selectedData[i].lat, selectedData[i].lng);
+        const labelLatLng = map.layerPointToLatLng(pos);
+
+        const line = L.polyline([originalLatLng, labelLatLng], {
+          color: 'red',
+          weight: 2,
+          pane: 'overlayPane'
+        });
+        window.labelLinesGroup.addLayer(line);
+      });
+
+      // 라벨 마커 위치 재설정
+      markersWithPos.forEach(({ marker, pos }) => {
+        marker.setLatLng(map.layerPointToLatLng(pos));
+      });
+    }
+
+
+
+
+
+
+    // 선택 리스트 엑셀 다운로드
+    downloadBtn.addEventListener('click', () => {
+      if (selectedData.length === 0) {
+        alert("선택된 리스트가 없습니다.");
+        return;
+      }
+      const worksheetData = [
+        ["업체명", "주소", "위도", "경도"],
+        ...selectedData.map(item => [item.name, item.address, item.lat, item.lng])
+      ];
+      const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "SelectedList");
+      XLSX.writeFile(workbook, "selected_list.xlsx");
+    });
+
+    // Google Geocoding API를 이용한 주소 → 위도경도 변환 함수
+    async function getCoordsByAddress(address) {
+      const apiKey = ""; // 구글 API 키
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
+
+      try {
+        console.log("주소 변환 요청:", address);
+        const res = await fetch(url);
+        console.log("응답 상태:", res.status);
+        if (!res.ok) {
+          console.error("API 요청 실패", res.status);
+          return null;
+        }
+        const data = await res.json();
+        console.log("응답 데이터:", data);
+
+        if (data.status === "OK" && data.results.length > 0) {
+          const location = data.results[0].geometry.location;
+          return {
+            lat: location.lat,
+            lng: location.lng
+          };
+        } else {
+          console.warn("주소 검색 결과 없음 또는 오류 상태:", data.status);
+          return null;
+        }
+      } catch (e) {
+        console.error("주소 변환 에러", e);
+        return null;
+      }
+    }
+
+    // 주소만 포함 엑셀 업로드
+    inputExcelAddr.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = evt => {
+        const data = new Uint8Array(evt.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        addrOnlyData = jsonData.slice(1).map(row => ({
+          name: row[0] || '',
+          address: row[1] || '',
+          lat: 0,
+          lng: 0
+        }));
+        alert(`주소 데이터 ${addrOnlyData.length}건 준비 완료`);
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+    // 변환 버튼 클릭 시 비밀번호 모달 띄우기
+    convertBtn.addEventListener('click', () => {
+      if (addrOnlyData.length === 0) {
+        alert("주소 데이터가 없습니다.");
+        return;
+      }
+      passwordInput.value = '';
+      passwordError.style.display = 'none';
+      passwordModal.classList.add('flex');
+      passwordInput.focus();
+    });
+
+    // 비밀번호 확인 버튼
+    passwordSubmit.addEventListener('click', async () => {
+      const entered = passwordInput.value;
+      if (entered === correctPassword) {
+        passwordModal.classList.remove('flex');
+        await convertAddressesToCoords();
+      } else {
+        passwordError.style.display = 'block';
+        passwordInput.focus();
+      }
+    });
+
+    // 비밀번호 취소 버튼
+    passwordCancel.addEventListener('click', () => {
+      passwordModal.classList.remove('flex');
+    });
+
+    // 엔터키 눌렀을 때 확인 처리
+    passwordInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        passwordSubmit.click();
+      }
+    });
+
+    // 주소 변환 + 다운로드 함수
+    async function convertAddressesToCoords() {
+    loadingIndicator.style.display = 'block';
+
+    for(let i = 0; i < addrOnlyData.length; i++) {
+        const item = addrOnlyData[i];
+        if (!item.address || item.address.trim() === '') {
+        item.lat = 0;
+        item.lng = 0;
+        continue;
+        }
+        const coords = await getCoordsByAddress(item.address);
+        if(coords) {
+        item.lat = coords.lat;
+        item.lng = coords.lng;
+        } else {
+        item.lat = 0;
+        item.lng = 0;
+        }
+        await new Promise(r => setTimeout(r, 300)); // API 요청 속도 조절
+    }
+
+    // lat,lng가 0인 항목 제거
+    const filteredData = addrOnlyData.filter(item => !(item.lat === 0 && item.lng === 0));
+
+    const worksheetData = [
+        ["업체명", "주소", "위도", "경도"],
+        ...filteredData.map(item => [item.name, item.address, item.lat, item.lng])
+    ];
+    const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "ConvertedCoords");
+    XLSX.writeFile(workbook, "converted_coordinates.xlsx");
+
+    loadingIndicator.style.display = 'none';
+    }
+    // 지도 확대 축소 시 마커 및 라벨 재배치
+    map.on('zoomend', () => {
+      refreshMap();
+    });
+
+    // 내위치표시시
+    const locateBtn = document.getElementById('locate-btn');
+    let userLocationMarker = null;
+
+    locateBtn.addEventListener('click', () => {
+    if (!navigator.geolocation) {
+        alert("현재 브라우저에서 위치 정보를 지원하지 않습니다.");
+        return;
+    }
+
+    locateBtn.disabled = true;
+    locateBtn.textContent = "위치 탐색 중...";
+
+    navigator.geolocation.getCurrentPosition(
+        position => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+
+        if (userLocationMarker) {
+            userLocationMarker.setLatLng([lat, lng]);
+        } else {
+            userLocationMarker = L.marker([lat, lng], {
+            title: "내 위치",
+            icon: L.divIcon({
+                className: '',
+                html: `<div style="
+                width: 14px;
+                height: 14px;
+                background: blue;
+                border: 3px solid white;
+                border-radius: 50%;
+                box-shadow: 0 0 8px 2px rgba(0,0,255,0.7);
+                "></div>`,
+                iconSize: [30, 30],
+                iconAnchor: [15, 15],
+                popupAnchor: [0, -15]
+            })
+            }).addTo(map).bindPopup("내 위치");
+        }
+
+        map.setView([lat, lng], 11);
+        userLocationMarker.openPopup();
+
+        locateBtn.disabled = false;
+        locateBtn.textContent = "내 위치 표시";
+        },
+        error => {
+        alert("위치 정보를 가져오는 데 실패했습니다: " + error.message);
+        locateBtn.disabled = false;
+        locateBtn.textContent = "내 위치 표시";
+        }
+    );
+    });
+
+
+
+    // 로컬스토리지 저장 함수
+    function saveSelectedToLocalStorage() {
+    localStorage.setItem('selectedData', JSON.stringify(selectedData));
+    }
+
+    // 로컬스토리지 불러오기 함수
+    function loadSelectedFromLocalStorage() {
+    const stored = localStorage.getItem('selectedData');
+    if (stored) {
+        try {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+            selectedData = parsed;
+            renderSelected();
+        }
+        } catch (e) {
+        console.error("로컬스토리지 파싱 오류", e);
+        }
+    }
+    }
+
+    // 선택 리스트 초기화 버튼
+    document.getElementById('clear-selected').addEventListener('click', () => {
+      if (confirm("선택된 리스트를 모두 삭제하시겠습니까?")) {
+          selectedData = [];
+          renderSelected();
+          localStorage.removeItem('selectedData');
+      }
+    });
+
+    //수정된 add/removeSelected 함수(로컬스토리지 저장)
+    function addSelected(row) {
+      if (!selectedData.some(item => item.name === row.name && item.lat === row.lat && item.lng === row.lng)) {
+          selectedData.push(row);
+          renderSelected();
+          saveSelectedToLocalStorage(); // 저장
+      }
+    }
+    function removeSelected(idx) {
+      selectedData.splice(idx, 1);
+      renderSelected();
+      saveSelectedToLocalStorage(); // 저장
+    }
+
+
+
+    // 검색결과 로컬스토리지 저장
+    function saveFullDataToLocalStorage() {
+      localStorage.setItem('fullData', JSON.stringify(fullData));
+    }
+
+    // 검색결과 로컬스토리지 불러오기
+    function loadFullDataFromLocalStorage() {
+      const stored = localStorage.getItem('fullData');
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            fullData = parsed;
+            renderTable(fullData);
+          }
+        } catch (e) {
+          console.error("fullData 파싱 오류", e);
+        }
+      }
+    }
+
+    // 검색결과 초기화 버튼 이벤트
+    document.getElementById('clear-search-result').addEventListener('click', () => {
+      if (confirm("검색 결과를 초기화하시겠습니까?")) {
+        fullData = [];
+        renderTable(fullData);
+        localStorage.removeItem('fullData');
+      }
+    });
+
+    // 검색어 입력시 렌더링 후 저장
+    searchInput.addEventListener('input', function() {
+      const keyword = this.value.trim().toLowerCase();
+      if (!keyword) {
+        renderTable(fullData);
+        saveFullDataToLocalStorage();
+        return;
+      }
+      const filtered = fullData.filter(row => row.name.toLowerCase().includes(keyword));
+      renderTable(filtered);
+      saveFullDataToLocalStorage();
+    });
+
+    // 엑셀 업로드 후 렌더링 및 저장
+    inputExcel.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = evt => {
+        const data = new Uint8Array(evt.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        fullData = jsonData.slice(1).map(row => ({
+          name: row[0] || '',
+          address: row[1] || '',
+          lat: row[2] !== undefined ? parseFloat(row[2]) || 0 : 0,
+          lng: row[3] !== undefined ? parseFloat(row[3]) || 0 : 0
+        }));
+        renderTable(fullData);
+        saveFullDataToLocalStorage();
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+
+
+    document.getElementById('select-all-search-results').addEventListener('click', () => {
+      // 현재 주소 테이블에 보이는 데이터(=검색결과) 기준으로 전체 선택 리스트에 추가
+      const rows = tbody.querySelectorAll('tr');
+      rows.forEach(tr => {
+        const cells = tr.children;
+        const rowData = {
+          name: cells[0].textContent,
+          address: cells[1].textContent,
+          lat: parseFloat(cells[2].textContent),
+          lng: parseFloat(cells[3].textContent)
+        };
+        // 중복 확인 후 추가
+        if (!selectedData.some(item => item.name === rowData.name && item.lat === rowData.lat && item.lng === rowData.lng)) {
+          selectedData.push(rowData);
+        }
+      });
+      renderSelected();
+      saveSelectedToLocalStorage();
+    });
+
+
+
+    window.addEventListener('DOMContentLoaded', () => {
+      // 로컬스토리지에서 선택된 리스트 및 전체 리스트 불러오기
+      loadSelectedFromLocalStorage();
+      loadFullDataFromLocalStorage();
+
+      // 모바일 여부 확인 (가로폭 768px 이하)
+      const isMobile = window.innerWidth <= 768;
+
+      // 모바일이고 위치 정보 사용 가능하면
+      if (isMobile && navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          position => {
+            // 현재 위치 좌표 받아오기
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+
+            // 지도 중심을 내 위치로 설정
+            map.setView([lat, lng], 11);
+
+            // 지도가 보이도록 강제로 크기 재계산
+            map.whenReady(() => {
+              map.invalidateSize();
+            });
+
+            // 내 위치 마커가 이미 있으면 위치만 이동, 없으면 새로 생성
+            if (userLocationMarker) {
+              userLocationMarker.setLatLng([lat, lng]);
+            } else {
+              userLocationMarker = L.marker([lat, lng], {
+                title: "내 위치",
+                icon: L.divIcon({
+                  className: '',
+                  html: `<div style="
+                    width: 14px;
+                    height: 14px;
+                    background: blue;
+                    border: 3px solid white;
+                    border-radius: 50%;
+                    box-shadow: 0 0 8px 2px rgba(0,0,255,0.7);
+                  "></div>`,
+                  iconSize: [30, 30],
+                  iconAnchor: [15, 15],
+                  popupAnchor: [0, -15]
+                })
+              }).addTo(map).bindPopup("내 위치").openPopup();
+            }
+          },
+          error => {
+            // 위치 정보를 가져오는 데 실패하면 내 회사 위치로 이동
+            console.warn("GPS 실패: 내 회사 위치로 초기화");
+            map.setView([myCompany.lat, myCompany.lng], 11);
+            map.whenReady(() => map.invalidateSize());
+          }
+        );
+      } else {
+        // 데스크탑이거나 GPS 미지원인 경우 내 회사 위치로 초기화
+        map.setView([myCompany.lat, myCompany.lng], 11);
+        map.whenReady(() => map.invalidateSize());
+      }
+    });
+
+
+    
+  </script>
+</body>
+</html>
