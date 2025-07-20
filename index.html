@@ -600,26 +600,22 @@
       // 티맵 내비 연결
       document.getElementById("nav-tmap").addEventListener("click", () => {
         const query = encodeURIComponent(navTargetAddress || navTargetName);
+        const name = navTargetName;
+        const lat = selectedData.find(x => x.name === name)?.lat;
+        const lng = selectedData.find(x => x.name === name)?.lng;
 
-        if (isMobile() && navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            (pos) => {
-              const lat = pos.coords.latitude;
-              const lng = pos.coords.longitude;
-
-              // 티맵 앱 내비 호출 URI: 출발지 좌표 포함
-              const url = `tmap://route?goalname=${query}`;
-
-              window.open(url, "_blank");
-              closeNavModal();
-            },
-            (err) => {
-              // 위치 못받으면 그냥 티맵 검색 화면 호출
-              const url = `tmap://route?goalname=${query}`;
-              window.open(url, "_blank");
-              closeNavModal();
-            }
-          );
+        if (isMobile()) {
+          if (lat && lng) {
+            // ⛳ 정확한 좌표 전달 → 티맵 앱 실행
+            const url = `tmap://route?goalname=${name}&goalx=${lng}&goaly=${lat}`;
+            window.location.href = url;
+            closeNavModal();
+          } else {
+            // ❗ 좌표가 없으면 이름만 전달
+            const url = `tmap://route?goalname=${name}`;
+            window.location.href = url;
+            closeNavModal();
+          }
         } else {
           // PC는 티맵 웹 내비 없으니 네이버 지도 웹으로 우회
           const url = `https://map.naver.com/v5/search/${query}`;
