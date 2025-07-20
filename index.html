@@ -608,7 +608,7 @@
               const lng = pos.coords.longitude;
 
               // 티맵 앱 내비 호출 URI: 출발지 좌표 포함
-              const url = `tmap://route?goalname=${query}&goalx=&goaly=&startx=${lng}&starty=${lat}&appname=com.example.app`;
+              const url = `tmap://search?name=${query}`;
 
               window.open(url, "_blank");
               closeNavModal();
