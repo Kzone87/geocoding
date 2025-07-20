@@ -10,19 +10,21 @@
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet.fullscreen/Control.FullScreen.js"></script>
   <style>
-    html, body {
-      height: 100%;
-      margin: 0;
-      padding: 0;
+
+    /* ✨ 모든 요소에 box-sizing: border-box 적용 */
+    *, *::before, *::after {
+      box-sizing: border-box;
     }
+
+    /* ... (기존 CSS 스타일) ... */
 
     body {
       display: flex;
       gap: 20px;
       padding: 20px;
       font-family: Arial, sans-serif;
-      height: 100vh; /* 전체 화면 높이 */
-      box-sizing: border-box;
+      height: 100vh;
+      overflow-y: auto; /* ✨ 스크롤 기능 추가 */
     }
 
     #left-container {
@@ -44,7 +46,6 @@
       border: 1px solid #ccc;
       padding: 15px;
       border-radius: 8px;
-      box-sizing: border-box;
       max-height: 100vh;
     }
 
@@ -128,6 +129,7 @@
       border: 1px solid #999;
       border-radius: 8px;
       min-height: 0; /* 기존 min-height 해제 */
+      position: relative; /* 자식 요소의 absolute 포지셔닝을 위해 추가 */
     }
 
     .name-list-label {
@@ -192,6 +194,7 @@
       font-size: 14px;
     }
 
+    /* 주소 변환 영역 */
     #address-convert-area {
       display: none;
       border: 2px solid #007bff;
@@ -228,7 +231,7 @@
       display: flex;
       justify-content: center;
       align-items: center;
-      z-index: 9999;
+      z-index: 10000;
     }
     .nav-modal.hidden {
       display: none;
@@ -238,7 +241,7 @@
       padding: 20px 30px;
       border-radius: 10px;
       text-align: center;
-      width: 280px;
+      width: 340px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.5);
     }
     .modal-content h3 {
@@ -281,27 +284,76 @@
         padding: 10px;
         height: 100vh;
       }
+      #right-container {
+        order: -1; /* 지도를 위로 올림 */
+        height: 50vh; /* 지도 영역 높이 고정 */
+        padding: 10px;
+      }
       #right-container, #left-container {
         flex: none;
         width: 100%;
         max-height: none;
         height: auto;
       }
-      #right-container {
-        order: -1; /* 지도를 위로 올림 */
-        height: 50vh; /* 지도 영역 높이 고정 */
-        padding: 10px;
-      }
       #map {
         height: 100%; /* 부모 높이 꽉 채움 */
-        min-height: 0;
+        min-height: 400px;
       }
     }
+
+    /* ✨ 지도 화면 외곽 마커 지표 (Offscreen Indicator) 스타일 */
+    #offscreen-indicators-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none; /* 지표 클릭을 방지하여 아래 지도 클릭 가능하게 함 */
+        z-index: 9999; /* 다른 요소 위에 표시 */
+    }
+
+    .offscreen-indicator {
+        position: absolute;
+        width: 60px; /* 크기 증가 */
+        height: 60px; /* 크기 증가 */
+        background-color: rgba(0, 0, 255, 0.7); /* 파란색, 반투명 */
+        border-radius: 50%; /* 원형 */
+        transform: translate(-50%, -50%); /* 지표 중앙 정렬 */
+        display: flex;
+        flex-direction: column; /* 세로로 화살표와 텍스트를 정렬 */
+        justify-content: center;
+        align-items: center;
+        color: white;
+        font-weight: bold;
+        cursor: pointer;
+        pointer-events: auto;
+        box-shadow: 0 0 5px rgba(0,0,0,0.5);
+        padding: 2px; /* 내부 패딩 */
+        text-align: center; /* 텍스트 중앙 정렬 */
+        overflow: hidden; /* 넘치는 텍스트 숨김 */
+    }
+    .offscreen-indicator:hover {
+        background-color: rgba(0, 0, 255, 1); /* 호버 시 진해짐 */
+    }
+    .offscreen-indicator .arrow-icon {
+        font-size: 20px; /* 화살표 아이콘 크기 */
+        line-height: 1; /* 라인 높이 조절 */
+        margin-bottom: 2px; /* 화살표와 이름 사이 간격 */
+    }
+    .offscreen-indicator .marker-name-text {
+        font-size: 10px; /* 마커 이름 텍스트 크기 */
+        line-height: 1.2; /* 라인 높이 조절 */
+        word-break: break-all; /* 긴 이름도 줄바꿈 허용 */
+        white-space: normal; /* 텍스트 줄바꿈 허용 */
+        max-height: 2.4em; /* 최대 2줄 표시 */
+        overflow: hidden;
+        text-overflow: ellipsis; /* 넘치는 텍스트에 ... 표시 */
+    }
+
   </style>
 </head>
 <body>
   <div id="left-container">
-    <!-- 주소만 있는 엑셀 업로드 → 위도경도 변환 후 다운로드 -->
     <div class="container" id="address-convert-area">
       <h3>📁 주소만 있는 엑셀 업로드 → 위도경도 변환 후 다운로드</h3>
       <input type="file" id="input-excel-addr" accept=".xlsx,.xls" />
@@ -309,7 +361,6 @@
       <div id="loading-indicator">주소 변환 중... 잠시만 기다려 주세요.</div>
     </div>
 
-    <!-- 좌표 포함 엑셀 업로드 + 검색 + 선택 리스트 -->
     <div class="container" style="flex-grow: 1; display: flex; flex-direction: column;">
       <h3>📁 좌표 포함 엑셀 업로드 + 검색</h3>
       <input type="file" id="input-excel" accept=".xlsx,.xls" />
@@ -324,9 +375,7 @@
             <tr>
               <th>업체명</th>
               <th>주소</th>
-              <th>위도</th>
-              <th>경도</th>
-            </tr>
+              <th style="display:none;">위도</th> <th style="display:none;">경도</th> </tr>
           </thead>
           <tbody></tbody>
         </table>
@@ -341,9 +390,7 @@
             <tr>
               <th>업체명</th>
               <th>주소</th>
-              <th>위도</th>
-              <th>경도</th>
-            </tr>
+              <th style="display:none;">위도</th> <th style="display:none;">경도</th> </tr>
           </thead>
           <tbody></tbody>
         </table>
@@ -354,10 +401,12 @@
   <div id="right-container">
     <h3>📍 지도</h3>
     <button id="locate-btn" style="margin-bottom:10px;">내 위치 표시</button>
-    <div id="map"></div>
+    <button id="toggle-offscreen-markers" style="margin-bottom:10px;">화면 밖 마커 숨기기</button>
+    <div id="map">
+      <div id="offscreen-indicators-container"></div>
+    </div>
   </div>
 
-  <!-- 비밀번호 입력 모달 -->
   <div id="password-modal">
     <div class="modal-box">
       <h3>비밀번호 입력</h3>
@@ -368,7 +417,6 @@
     </div>
   </div>
 
-  <!-- 네비 선택 모달 -->
   <div id="nav-modal" class="nav-modal hidden">
     <div class="modal-content">
       <h3>길찾기 앱 선택</h3>
@@ -381,855 +429,1182 @@
     </div>
   </div>
 
+
   <script>
-    let polylineLayer = null;  // 여기서 선언
-    let navTargetName = "";
-    let navTargetAddress = "";
+      let polylineLayer = null;
+      let navTargetName = "";
+      let navTargetAddress = "";
 
-    // 내회사 위치
-    const myCompany = {
-      name: "칼라정보기술",
-      address: "경기도 수원시 영통구 신원로 55",
-      lat: 37.2487505616809,
-      lng: 127.047853564414
-    };
+      // 내회사 위치
+      const myCompany = {
+        name: "칼라정보기술",
+        address: "경기도 수원시 영통구 신원로 55",
+        lat: 37.2487505616809,
+        lng: 127.047853564414
+      };
 
-    // 좌표 포함 데이터, 선택된 데이터
-    let fullData = [];
-    let selectedData = [];
+      // 좌표 포함 데이터, 선택된 데이터
+      let fullData = [];
+      let selectedData = [];
 
-    // 주소만 변환용 데이터
-    let addrOnlyData = [];
+      // 주소만 변환용 데이터
+      let addrOnlyData = [];
 
-    // UI 요소
-    const inputExcel = document.getElementById('input-excel');
-    const searchInput = document.getElementById('search-input');
-    const tbody = document.querySelector('#address-table tbody');
-    const selectedTbody = document.querySelector('#selected-table tbody');
-    const downloadBtn = document.getElementById('download-selected');
+      // UI 요소
+      const inputExcel = document.getElementById('input-excel');
+      const searchInput = document.getElementById('search-input');
+      const tbody = document.querySelector('#address-table tbody');
+      const selectedTbody = document.querySelector('#selected-table tbody');
+      const downloadBtn = document.getElementById('download-selected');
 
-    const inputExcelAddr = document.getElementById('input-excel-addr');
-    const convertBtn = document.getElementById('convert-download');
-    const loadingIndicator = document.getElementById('loading-indicator');
+      const inputExcelAddr = document.getElementById('input-excel-addr');
+      const convertBtn = document.getElementById('convert-download');
+      const loadingIndicator = document.getElementById('loading-indicator');
 
-    // 비밀번호 모달 관련 요소
-    const passwordModal = document.getElementById('password-modal');
-    const passwordInput = document.getElementById('password-input');
-    const passwordSubmit = document.getElementById('password-submit');
-    const passwordCancel = document.getElementById('password-cancel');
-    const passwordError = document.getElementById('password-error');
+      // 비밀번호 모달 관련 요소
+      const passwordModal = document.getElementById('password-modal');
+      const passwordInput = document.getElementById('password-input');
+      const passwordSubmit = document.getElementById('password-submit');
+      const passwordCancel = document.getElementById('password-cancel');
+      const passwordError = document.getElementById('password-error');
 
-    // 올바른 비밀번호 설정
-    const correctPassword = '123123'; // 원하는 비밀번호로 변경
+      // 올바른 비밀번호 설정
+      const correctPassword = '123123'; // 원하는 비밀번호로 변경
 
+      // ✨ 초성을 분리하기 위한 상수 (유니코드 기준)
+      const CHO_SUNG = [
+          'ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'
+      ];
 
-
-    // 지도 초기화
-    const map = L.map('map', { 
-      fullscreenControl: true,
-      minZoom: 9,
-      maxZoom: 16
-    }).setView([myCompany.lat, myCompany.lng], 11);
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
-
-    const markersGroup = L.layerGroup().addTo(map);
-
-    if (!map.getPane('labelPane')) {
-      map.createPane('labelPane');
-      map.getPane('labelPane').style.zIndex = 650;
-    }
-
-    // 내회사 마커 (붉은 원)
-    const myCompanyIcon = L.divIcon({
-      className: '',
-      html: `<div style="
-        width: 12px;
-        height: 12px;
-        background: red;
-        border: 3px solid white;
-        border-radius: 50%;
-        box-shadow: 0 0 8px 2px rgba(255,0,0,0.7);
-      "></div>`,
-      iconSize: [30, 30],
-      iconAnchor: [15, 15],
-      popupAnchor: [0, -15]
-    });
-
-    const myCompanyMarker = L.marker([myCompany.lat, myCompany.lng], {
-      title: myCompany.name,
-      icon: myCompanyIcon,
-      zIndexOffset: 1000
-    }).addTo(map);
-
-
-
-
-
-    // 내비연결 코드
-    // 모바일 환경 감지 함수
-    function isMobile() {
-      return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    }
-
-    // 내비연결 모달 열기
-    function openNavModal(name, address) {
-      console.log("openNavModal 호출됨:", name, address);
-      navTargetName = name;
-      navTargetAddress = address;
-      document.getElementById("nav-target-text").innerHTML = `${name}<br>${address}`;
-      document.getElementById("nav-modal").classList.remove("hidden");
-    }
-
-    // 네이버 내비 연결
-    document.getElementById("nav-naver").addEventListener("click", () => {
-      const query = encodeURIComponent(navTargetAddress || navTargetName);
-      const url = `https://map.naver.com/v5/search/${query}`;
-      window.open(url, "_blank");
-      closeNavModal();
-    });
-
-    // 티맵 내비 연결
-    document.getElementById("nav-tmap").addEventListener("click", () => {
-      const query = encodeURIComponent(navTargetAddress || navTargetName);
-
-      if (isMobile() && navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            const lat = pos.coords.latitude;
-            const lng = pos.coords.longitude;
-
-            // 티맵 앱 내비 호출 URI: 출발지 좌표 포함
-            const url = `tmap://route?goalname=${query}&goalx=&goaly=&startx=${lng}&starty=${lat}&appname=com.example.app`;
-
-            window.open(url, "_blank");
-            closeNavModal();
-          },
-          (err) => {
-            // 위치 못받으면 그냥 티맵 검색 화면 호출
-            const url = `tmap://search?name=${query}`;
-            window.open(url, "_blank");
-            closeNavModal();
+      /**
+       * 주어진 한글 문자열을 초성 문자열로 변환합니다.
+       * 한글 음절이 아닌 문자는 그대로 반환합니다.
+       * @param {string} str - 초성으로 변환할 문자열 (한글, 영문, 숫자 등 포함 가능)
+       * @returns {string} - 초성으로 변환된 문자열
+       */
+      function getKoreanInitialConsonants(str) {
+          let result = '';
+          for (let i = 0; i < str.length; i++) {
+              const charCode = str.charCodeAt(i);
+              if (charCode >= 0xAC00 && charCode <= 0xD7A3) { // 한글 음절 범위 (가~힣)
+                  const unicode = charCode - 0xAC00;
+                  const cho = Math.floor(unicode / 588); // 초성 인덱스 계산
+                  result += CHO_SUNG[cho];
+              } else {
+                  // 한글 음절이 아닌 경우 (영문, 숫자, 특수문자 등)는 그대로 추가
+                  result += str[i];
+              }
           }
-        );
-      } else {
-        // PC는 티맵 웹 내비 없으니 네이버 지도 웹으로 우회
+          return result;
+      }
+
+      // ✨ 새로운 헬퍼 함수: 입력된 문자열이 오직 한글 초성으로만 구성되었는지 확인
+      function isOnlyKoreanInitials(text) {
+          if (!text) return false;
+          const initialConsonantCompatibilityJamoCodes = [
+              0x3131, 0x3132, 0x3134, 0x3137, 0x3138, 0x3139, 0x3141, 0x3142, 0x3143,
+              0x3145, 0x3146, 0x3147, 0x3148, 0x3149, 0x314A, 0x314B, 0x314C, 0x314D, 0x314E // ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ (호환용 한글 자모)
+          ];
+          const initialConsonantJamoCodes = [
+              0x1100, 0x1101, 0x1102, 0x1103, 0x1104, 0x1105, 0x1106, 0x1107, 0x1108,
+              0x1109, 0x110A, 0x110B, 0x110C, 0x110D, 0x110E, 0x110F, 0x1110, 0x1111, 0x1112 // ᄀᄁᄂᄃᄄᄅᄆᄇᄈᄉᄊᄋᄌᄍᄎᄏᄐᄑᄒ (한글 자모)
+          ];
+
+          for (let i = 0; i < text.length; i++) {
+              const charCode = text.charCodeAt(i);
+              
+              // 1. 전체 한글 음절(가-힣)이 포함되어 있다면 초성으로만 구성된 것이 아님
+              if (charCode >= 0xAC00 && charCode <= 0xD7A3) {
+                  return false;
+              }
+              // 2. 한글 자모 또는 호환용 한글 자모인데 초성이 아니라면 초성으로만 구성된 것이 아님
+              else if (
+                  (charCode >= 0x3130 && charCode <= 0x318F && !initialConsonantCompatibilityJamoCodes.includes(charCode)) || // 호환용 자모이면서 초성이 아님 (예: ㅏ, ㅂ)
+                  (charCode >= 0x1100 && charCode <= 0x11FF && !initialConsonantJamoCodes.includes(charCode)) // 한글 자모이면서 초성이 아님
+              ) {
+                  return false;
+              }
+              // 3. 한글 관련 문자(초성 자모, 음절)가 아닌 다른 문자(영어, 숫자, 특수문자 등)가 포함되어 있다면 초성으로만 구성된 것이 아님
+              else if (!(charCode >= 0x3130 && charCode <= 0x318F) && !(charCode >= 0x1100 && charCode <= 0x11FF)) {
+                  return false;
+              }
+          }
+          return true; // 위의 어떤 조건에도 해당하지 않으면 오직 한글 초성으로만 구성됨
+      }
+
+
+
+      // 지도 초기화
+      const map = L.map('map', { 
+        fullscreenControl: true,
+        minZoom: 9,
+        maxZoom: 16
+      }).setView([myCompany.lat, myCompany.lng], 11);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+
+      const markersGroup = L.layerGroup().addTo(map);
+
+      if (!map.getPane('labelPane')) {
+        map.createPane('labelPane');
+        map.getPane('labelPane').style.zIndex = 650;
+      }
+
+      // 내회사 마커 (붉은 원)
+      const myCompanyIcon = L.divIcon({
+        className: '',
+        html: `<div style="
+          width: 24px;
+          height: 24px;
+          background: red;
+          border: 3px solid white;
+          border-radius: 50%;
+          box-shadow: 0 0 8px 2px rgba(255,0,0,0.7);
+        "></div>`,
+        iconSize: [30, 30],
+        iconAnchor: [15, 15],
+        popupAnchor: [0, -15]
+      });
+
+      const myCompanyMarker = L.marker([myCompany.lat, myCompany.lng], {
+        title: myCompany.name,
+        icon: myCompanyIcon,
+        zIndexOffset: 1000
+      }).addTo(map);
+
+      // 내비연결 코드
+      // 모바일 환경 감지 함수
+      function isMobile() {
+        return window.innerWidth <= 768; // 768px 기준으로 모바일/PC 구분
+      }
+
+      // 내비연결 모달 열기
+      function openNavModal(name, address) {
+        console.log("openNavModal 호출됨:", name, address);
+        navTargetName = name;
+        navTargetAddress = address;
+        document.getElementById("nav-target-text").innerHTML = `${name}<br>${address}`;
+        document.getElementById("nav-modal").classList.remove("hidden");
+      }
+
+      // 네이버 내비 연결
+      document.getElementById("nav-naver").addEventListener("click", () => {
+        const query = encodeURIComponent(navTargetAddress || navTargetName);
         const url = `https://map.naver.com/v5/search/${query}`;
         window.open(url, "_blank");
         closeNavModal();
+      });
+
+      // 티맵 내비 연결
+      document.getElementById("nav-tmap").addEventListener("click", () => {
+        const query = encodeURIComponent(navTargetAddress || navTargetName);
+
+        if (isMobile() && navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              const lat = pos.coords.latitude;
+              const lng = pos.coords.longitude;
+
+              // 티맵 앱 내비 호출 URI: 출발지 좌표 포함
+              const url = `tmap://route?goalname=${query}&goalx=&goaly=&startx=${lng}&starty=${lat}&appname=com.example.app`;
+
+              window.open(url, "_blank");
+              closeNavModal();
+            },
+            (err) => {
+              // 위치 못받으면 그냥 티맵 검색 화면 호출
+              const url = `tmap://search?name=${query}`;
+              window.open(url, "_blank");
+              closeNavModal();
+            }
+          );
+        } else {
+          // PC는 티맵 웹 내비 없으니 네이버 지도 웹으로 우회
+          const url = `https://map.naver.com/v5/search/${query}`;
+          window.open(url, "_blank");
+          closeNavModal();
+        }
+      });
+
+      // 취소 버튼
+      document.getElementById("nav-cancel").addEventListener("click", () => {
+        closeNavModal();
+      });
+
+      // 모달 닫기
+      function closeNavModal() {
+        document.getElementById("nav-modal").classList.add("hidden");
       }
-    });
 
-    // 취소 버튼
-    document.getElementById("nav-cancel").addEventListener("click", () => {
-      closeNavModal();
-    });
-
-    // 모달 닫기
-    function closeNavModal() {
-      document.getElementById("nav-modal").classList.add("hidden");
-    }
-
-
-
-
-    // 마커 그룹핑 함수
-    function getPixelThreshold() {
-      return 30; // 픽셀 기준 (필요시 조정)
-    }
-    function groupMarkersByProximity(locs, map, pixelThreshold) {
-      const groups = [];
-      const visited = new Array(locs.length).fill(false);
-      for (let i = 0; i < locs.length; i++) {
-        if (visited[i]) continue;
-        visited[i] = true;
-        const base = locs[i];
-        const basePoint = map.latLngToLayerPoint([base.lat, base.lng]);
-        const group = [base];
-        for (let j = i + 1; j < locs.length; j++) {
-          if (visited[j]) continue;
-          const comp = locs[j];
-          const compPoint = map.latLngToLayerPoint([comp.lat, comp.lng]);
-          if (basePoint.distanceTo(compPoint) <= pixelThreshold) {
-            visited[j] = true;
-            group.push(comp);
+      // 마커 그룹핑 함수
+      function getPixelThreshold() {
+        return 30; // 픽셀 기준 (필요시 조정)
+      }
+      function groupMarkersByProximity(locs, map, pixelThreshold) {
+        const groups = [];
+        const visited = new Array(locs.length).fill(false);
+        for (let i = 0; i < locs.length; i++) {
+          if (visited[i]) continue;
+          visited[i] = true;
+          const base = locs[i];
+          const basePoint = map.latLngToLayerPoint([base.lat, base.lng]);
+          const group = [base];
+          for (let j = i + 1; j < locs.length; j++) {
+            if (visited[j]) continue;
+            const comp = locs[j];
+            const compPoint = map.latLngToLayerPoint([comp.lat, comp.lng]);
+            if (basePoint.distanceTo(compPoint) <= pixelThreshold) {
+              visited[j] = true;
+              group.push(comp);
+            }
           }
+          groups.push(group);
         }
-        groups.push(group);
+        return groups;
       }
-      return groups;
-    }
 
-    // 좌표 포함 데이터 테이블 렌더링
-    function renderTable(data) {
-      tbody.innerHTML = '';
-      data.forEach(row => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${row.name}</td><td>${row.address || ''}</td><td>${row.lat}</td><td>${row.lng}</td>`;
-        tr.addEventListener('click', () => addSelected(row));
-        tbody.appendChild(tr);
-      });
-    }
-    // 선택된 리스트 렌더링
-    function renderSelected() {
-      selectedTbody.innerHTML = '';
-      selectedData.forEach((row, idx) => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${row.name}</td><td>${row.address || ''}</td><td>${row.lat}</td><td>${row.lng}</td>`;
-        tr.addEventListener('click', () => removeSelected(idx));
-        selectedTbody.appendChild(tr);
-      });
-      refreshMap();
-    }
-
-    // 좌표 포함 엑셀 업로드
-    inputExcel.addEventListener('change', e => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = evt => {
-        const data = new Uint8Array(evt.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-        fullData = jsonData.slice(1).map(row => ({
-          name: row[0] || '',
-          address: row[1] || '',
-          lat: row[2] !== undefined ? parseFloat(row[2]) || 0 : 0,
-          lng: row[3] !== undefined ? parseFloat(row[3]) || 0 : 0
-        }));
-        renderTable(fullData);
-      };
-      reader.readAsArrayBuffer(file);
-    });
-
-    // 검색 기능
-    searchInput.addEventListener('input', function() {
-      const keyword = this.value.trim().toLowerCase();
-      if (!keyword) {
-        renderTable(fullData);
-        return;
+      // 데이터 테이블 렌더링
+      function renderTable(data) {
+        tbody.innerHTML = '';
+        data.forEach(row => {
+          const tr = document.createElement('tr');
+          // 위도와 경도 데이터를 숨겨진 td 요소로 추가
+          tr.innerHTML = `<td>${row.name}</td><td>${row.address || ''}</td><td style="display:none;">${row.lat}</td><td style="display:none;">${row.lng}</td>`;
+          tr.addEventListener('click', () => addSelected(row));
+          tbody.appendChild(tr);
+        });
       }
-      const filtered = fullData.filter(row => row.name.toLowerCase().includes(keyword));
-      renderTable(filtered);
-    });
+      // 선택된 리스트 렌더링
+      function renderSelected() {
+        selectedTbody.innerHTML = '';
+        selectedData.forEach((row, idx) => {
+          const tr = document.createElement('tr');
+          // 위도와 경도 데이터를 숨겨진 td 요소로 추가 (이 부분을 수정합니다)
+          tr.innerHTML = `<td>${row.name}</td><td>${row.address || ''}</td><td style="display:none;">${row.lat.toFixed(6)}</td><td style="display:none;">${row.lng.toFixed(6)}</td>`;
+          tr.addEventListener('click', () => removeSelected(idx));
+          selectedTbody.appendChild(tr);
+        });
+        refreshMap();
+        updateOffscreenIndicators(); // ✨ 선택 리스트 변경 시 지표도 업데이트
+      }
 
-    // 지도 갱신
-    async function refreshMap() {
-    markersGroup.clearLayers();
-    myCompanyMarker.addTo(map);
+      // 좌표 포함 엑셀 업로드
+      inputExcel.addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = evt => {
+          const data = new Uint8Array(evt.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+          fullData = jsonData.slice(1).map(row => ({
+            name: row[0] || '',
+            address: row[1] || '',
+            lat: row[2] !== undefined ? parseFloat(row[2]) || 0 : 0,
+            lng: row[3] !== undefined ? parseFloat(row[3]) || 0 : 0
+          }));
+          renderTable(fullData);
+          saveFullDataToLocalStorage(); // ✨ 로컬 스토리지에 저장
+        };
+        reader.readAsArrayBuffer(file);
+      });
 
-    if (window.labelLinesGroup) {
-      window.labelLinesGroup.clearLayers();
-    } else {
-      window.labelLinesGroup = L.layerGroup().addTo(map);
-    }
-    
-    if (polylineLayer) {
-        map.removeLayer(polylineLayer);
-        polylineLayer = null;
-    }
+      // 검색 기능 (✨ 초성으로만 되어있으면 초성검색, 그 외는 단어검색)
+      searchInput.addEventListener('input', function() {
+          const keyword = this.value.trim().toLowerCase(); // 사용자 검색어
 
-    const zoom = map.getZoom();
-    const threshold = getPixelThreshold(zoom);
-    const grouped = groupMarkersByProximity(selectedData, map, threshold);
+          if (!keyword) {
+              renderTable(fullData); // 검색어가 없으면 전체 데이터 표시
+              saveFullDataToLocalStorage();
+              return;
+          }
 
-    // ✨ 라벨 위치 조정 및 겹침 방지 파라미터
-    const baseOffset = 15; // 마커에서 라벨의 초기 오프셋 (픽셀)
-    const labelMoveStep = 10; // 8방향 탐색 시 라벨을 이동시킬 픽셀 간격
-    const maxOverlapIterations = 1000; // 겹침 해결 시도 최대 반복 횟수
+          // ✨ 검색어의 종류를 판단
+          const isOnlyInitials = isOnlyKoreanInitials(keyword);
 
-    const markersWithPos = []; 
+          const filtered = fullData.filter(row => {
+              const name = row.name ? row.name.toLowerCase() : ''; // 업체명 (name)
 
-    for (const group of grouped) {
-        const popupContent = group.map(item => `
-          <div class="nav-link" 
-              data-name="${item.name}" 
-              data-address="${item.address || ''}"
-              style="cursor:pointer; color:#007bff; font-weight:bold;">
-            ${item.name}<br/>
-            <span>${item.address || '주소 없음'}</span>
-          </div>
-        `).join('<hr>');
-
-        const base = group[0];
-        const baseLatLng = L.latLng(base.lat, base.lng); 
-
-        const realMarker = L.marker(baseLatLng).addTo(markersGroup);
-        realMarker.bindPopup(popupContent);
-
-        realMarker.on('popupopen', (e) => {
-          const popupEl = e.popup.getElement();
-          popupEl.querySelectorAll('.nav-link').forEach(el => {
-            el.addEventListener('click', () => {
-              const name = el.getAttribute('data-name');
-              const address = el.getAttribute('data-address');
-              openNavModal(name, address);
-            });
+              if (isOnlyInitials) {
+                  // 검색어가 초성으로만 구성되어 있으면 초성 검색 수행
+                  const nameInitials = getKoreanInitialConsonants(name); // 업체명의 초성
+                  const keywordInitials = getKoreanInitialConsonants(keyword); // 사용자 검색어의 초성
+                  return nameInitials.includes(keywordInitials); // 업체명의 초성에 검색어 초성 포함
+              } else {
+                  // 검색어가 초성이 아닌 일반 단어이거나 다른 문자가 포함되어 있으면 단어 검색 수행
+                  return name.includes(keyword); // 업체명에 원본 검색어 포함
+              }
           });
-        });
 
-        const html = group.map(i => i.name).join('<br />');
-        const icon = L.divIcon({
-          className: 'name-list-label',
-          html,
-          iconSize: null, 
-          iconAnchor: [0, 20] 
-        });
+          renderTable(filtered); // 필터링된 데이터로 테이블 갱신
+          saveFullDataToLocalStorage();
+      });
 
-        // 라벨의 초기 위치 설정 (마커의 픽셀 위치 + 오프셋)
-        let pos = map.latLngToLayerPoint(baseLatLng).add([baseOffset, 0]); 
-        const labelMarker = L.marker(map.layerPointToLatLng(pos), {
-          icon,
-          interactive: true,
-          pane: 'labelPane'
-        }).addTo(markersGroup);
+      // ✨ 배열을 무작위로 섞는 Fisher-Yates (Knuth) 셔플 알고리즘
+      function shuffleArray(array) {
+          for (let i = array.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [array[i], array[j]] = [array[j], array[i]]; // 요소 교환
+          }
+      }
 
-        labelMarker.bindPopup(popupContent);
+      // 지도 갱신
+      async function refreshMap() {
+          markersGroup.clearLayers();
+          myCompanyMarker.addTo(map);
 
-        labelMarker.on('popupopen', (e) => {
-          const popupEl = e.popup.getElement();
-          popupEl.querySelectorAll('.nav-link').forEach(el => {
-            el.addEventListener('click', () => {
-              const name = el.getAttribute('data-name');
-              const address = el.getAttribute('data-address');
-              openNavModal(name, address);
-            });
+          if (window.labelLinesGroup) {
+            window.labelLinesGroup.clearLayers();
+          } else {
+            window.labelLinesGroup = L.layerGroup().addTo(map);
+          }
+          
+          if (polylineLayer) {
+              map.removeLayer(polylineLayer);
+              polylineLayer = null;
+          }
+
+          const zoom = map.getZoom();
+          const threshold = getPixelThreshold(zoom);
+          const grouped = groupMarkersByProximity(selectedData, map, threshold);
+
+          const baseOffset = 15; // 마커에서 라벨의 초기 오프셋 (픽셀)
+          const labelMoveStep = 20; // 8방향 탐색 시 라벨을 이동시킬 픽셀 간격
+          const maxOverlapIterations = 100; // 겹침 해결 시도 최대 반복 횟수
+
+          const markersWithPos = []; // 라벨 마커, 현재 화면 상 위치, 크기, 원본 LatLng 정보를 저장
+          const realMarkerPixelBounds = []; // 모든 실제 마커의 픽셀 경계 (피해야 할 영역)를 저장할 배열
+
+          for (const group of grouped) {
+              const popupContent = group.map(item => `
+                <div class="nav-link" 
+                    data-name="${item.name}" 
+                    data-address="${item.address || ''}"
+                    style="cursor:pointer; color:#007bff; font-weight:bold;">
+                  ${item.name}<br/>
+                  <span>${item.address || '주소 없음'}</span>
+                </div>
+              `).join('<hr>');
+
+              const base = group[0];
+              const baseLatLng = L.latLng(base.lat, base.lng); 
+
+              const realMarker = L.marker(baseLatLng).addTo(markersGroup);
+              realMarker.bindPopup(popupContent);
+
+              realMarker.on('popupopen', (e) => {
+                const popupEl = e.popup.getElement();
+                popupEl.querySelectorAll('.nav-link').forEach(el => {
+                  el.addEventListener('click', () => {
+                    const name = el.getAttribute('data-name');
+                    const address = el.getAttribute('data-address');
+                    openNavModal(name, address);
+                  });
+                });
+              });
+
+              // 실제 마커의 픽셀 경계 계산 및 저장
+              const defaultMarkerIconSize = L.point(25, 41); 
+              const defaultMarkerIconAnchor = L.point(12, 41); 
+              const realMarkerPixelPos = map.latLngToLayerPoint(baseLatLng);
+              const realMarkerTopLeft = realMarkerPixelPos.subtract(defaultMarkerIconAnchor);
+              realMarkerPixelBounds.push(L.bounds(realMarkerTopLeft, realMarkerTopLeft.add(defaultMarkerIconSize)));
+
+
+              const html = group.map(i => i.name).join('<br />');
+              const labelIconAnchor = L.point(0, 20); // 커스텀 DivIcon의 앵커 포인트
+              const icon = L.divIcon({
+                className: 'name-list-label',
+                html,
+                iconSize: null, 
+                iconAnchor: labelIconAnchor // 정의된 앵커 사용
+              });
+
+              let pos = map.latLngToLayerPoint(baseLatLng).add([baseOffset, 0]); 
+              const labelMarker = L.marker(map.layerPointToLatLng(pos), {
+                icon,
+                interactive: true,
+                pane: 'labelPane'
+              }).addTo(markersGroup);
+
+              labelMarker.bindPopup(popupContent);
+
+              labelMarker.on('popupopen', (e) => {
+                const popupEl = e.popup.getElement();
+                popupEl.querySelectorAll('.nav-link').forEach(el => {
+                  el.addEventListener('click', () => {
+                    const name = el.getAttribute('data-name');
+                    const address = el.getAttribute('data-address');
+                    openNavModal(name, address);
+                  });
+                });
+              });
+
+              await new Promise(resolve => {
+                  const checkElement = () => {
+                      const el = labelMarker.getElement();
+                      if (el) {
+                          markersWithPos.push({ 
+                              marker: labelMarker, 
+                              initialPos: pos.clone(), 
+                              pos, 
+                              width: el.offsetWidth, 
+                              height: el.offsetHeight, 
+                              originalLatLng: baseLatLng,
+                              labelIconAnchor: labelIconAnchor
+                          });
+                          resolve();
+                      } else {
+                          setTimeout(checkElement, 10); 
+                      }
+                  };
+                  checkElement();
+              });
+          }
+
+          const directions = [
+              L.point(1, 0),    // 오른쪽
+              L.point(1, -1),   // 오른쪽 위
+              L.point(0, -1),   // 위
+              L.point(-1, -1),  // 왼쪽 위
+              L.point(-1, 0),   // 왼쪽
+              L.point(-1, 1),   // 왼쪽 아래
+              L.point(0, 1),    // 아래
+              L.point(1, 1)     // 오른쪽 아래
+          ];
+
+          let overlapped = true;
+          let iteration = 0;
+
+          while (overlapped && iteration < maxOverlapIterations) {
+              overlapped = false; 
+              // ✨ 매 반복마다 라벨 처리 순서를 무작위로 섞음
+              shuffleArray(markersWithPos);
+              
+              for (let i = 0; i < markersWithPos.length; i++) {
+                  const currentLabel = markersWithPos[i];
+                  
+                  const currentLabelTopLeft = currentLabel.pos.subtract(currentLabel.labelIconAnchor);
+                  const currentBounds = L.bounds(currentLabelTopLeft, currentLabelTopLeft.add([currentLabel.width, currentLabel.height]));
+                  
+                  let hasOverlap = false;
+
+                  // 다른 라벨들과의 겹침 확인
+                  for (let j = 0; j < markersWithPos.length; j++) {
+                      if (i === j) continue; 
+                      
+                      const otherLabel = markersWithPos[j];
+                      const otherLabelTopLeft = otherLabel.pos.subtract(otherLabel.labelIconAnchor);
+                      const otherBounds = L.bounds(otherLabelTopLeft, otherLabelTopLeft.add([otherLabel.width, otherLabel.height]));
+
+                      if (currentBounds.intersects(otherBounds)) {
+                          hasOverlap = true;
+                          overlapped = true; 
+                          break; 
+                      }
+                  }
+
+                  // 실제 마커(obstacle)와의 겹침 확인
+                  if (!hasOverlap) { 
+                      for (let k = 0; k < realMarkerPixelBounds.length; k++) {
+                          const realMarkerBounds = realMarkerPixelBounds[k];
+                          if (currentBounds.intersects(realMarkerBounds)) {
+                              hasOverlap = true;
+                              overlapped = true;
+                              break;
+                          }
+                      }
+                  }
+
+                  if (hasOverlap) {
+                      let foundSpot = false;
+                      const basePixelPos = map.latLngToLayerPoint(currentLabel.originalLatLng);
+
+                      for (const dir of directions) {
+                          const proposedPos = basePixelPos.add(dir.multiplyBy(baseOffset + labelMoveStep * iteration)); 
+                          
+                          const proposedLabelTopLeft = proposedPos.subtract(currentLabel.labelIconAnchor);
+                          const proposedBounds = L.bounds(proposedLabelTopLeft, proposedLabelTopLeft.add([currentLabel.width, currentLabel.height]));
+                          
+                          let conflict = false;
+
+                          // 제안된 위치가 다른 라벨과 겹치는지 확인
+                          for (let k = 0; k < markersWithPos.length; k++) {
+                              if (i === k) continue; 
+                              const existingLabel = markersWithPos[k];
+                              const existingLabelTopLeft = existingLabel.pos.subtract(existingLabel.labelIconAnchor);
+                              const existingBounds = L.bounds(existingLabelTopLeft, existingLabelTopLeft.add([existingLabel.width, existingLabel.height]));
+                              
+                              if (proposedBounds.intersects(existingBounds)) {
+                                  conflict = true;
+                                  break;
+                              }
+                          }
+
+                          // 제안된 위치가 실제 마커(obstacle)와 겹치는지 확인
+                          if (!conflict) { 
+                              for (let k = 0; k < realMarkerPixelBounds.length; k++) {
+                                  const realMarkerBounds = realMarkerPixelBounds[k];
+                                  if (proposedBounds.intersects(realMarkerBounds)) {
+                                      conflict = true;
+                                      break;
+                                  }
+                              }
+                          }
+
+                          if (!conflict) {
+                              currentLabel.pos = proposedPos;
+                              foundSpot = true;
+                              break; 
+                          }
+                      }
+                  }
+              }
+              iteration++;
+              await new Promise(r => setTimeout(r, 0)); 
+          }
+
+          window.labelLinesGroup.clearLayers();
+
+          markersWithPos.forEach(({ marker, pos, originalLatLng, width, height, labelIconAnchor }) => {
+              const labelTopLeftPixel = pos.subtract(labelIconAnchor);
+              const labelCenterPixel = labelTopLeftPixel.add([width / 2, height / 2]);
+              const labelCenterLatLng = map.layerPointToLatLng(labelCenterPixel);
+
+              const line = L.polyline([originalLatLng, labelCenterLatLng], { 
+                  color: 'blue',
+                  weight: 3,
+                  pane: 'overlayPane' 
+              });
+              window.labelLinesGroup.addLayer(line);
+              
+              const labelLatLng = map.layerPointToLatLng(pos); 
+              marker.setLatLng(labelLatLng); 
           });
-        });
+      }
 
-        // 라벨 마커의 DOM 요소가 렌더링될 때까지 기다려서 정확한 크기를 얻음
-        await new Promise(resolve => {
-            const checkElement = () => {
-                const el = labelMarker.getElement();
-                if (el) {
-                    markersWithPos.push({ 
-                        marker: labelMarker, 
-                        initialPos: pos.clone(), // 초기 픽셀 위치 (고정)
-                        pos, // 현재 조정될 픽셀 위치
-                        width: el.offsetWidth, 
-                        height: el.offsetHeight, 
-                        originalLatLng: baseLatLng // 원본 마커의 LatLng
-                    });
-                    resolve();
-                } else {
-                    setTimeout(checkElement, 10); 
-                }
+      // ✨ 화면 밖 마커 지표 관련 변수 및 함수
+      let offscreenIndicators = {}; // Key: marker's unique ID, Value: indicator element
+      const offscreenIndicatorsContainer = document.getElementById('offscreen-indicators-container'); // 컨테이너 요소 가져오기
+      const toggleOffscreenMarkersBtn = document.getElementById('toggle-offscreen-markers'); // 토글 버튼 가져오기
+
+      function updateOffscreenIndicators() {
+          // offscreen-indicators-container가 숨겨져 있으면 업데이트 로직 실행하지 않음
+          if (offscreenIndicatorsContainer.style.display === 'none') {
+              // 현재 보이는 모든 지표를 제거하여 깨끗하게 유지
+              Object.values(offscreenIndicators).forEach(indicator => indicator.remove());
+              offscreenIndicators = {};
+              return;
+          }
+
+          const mapBounds = map.getBounds();
+          const mapContainer = map.getContainer(); // 지도의 HTML 컨테이너 요소
+          const mapRect = mapContainer.getBoundingClientRect(); // 지도의 현재 크기 및 위치
+          const mapWidth = mapRect.width;
+          const mapHeight = mapRect.height;
+          
+          // 지도의 중심점의 픽셀 좌표
+          const centerPoint = map.latLngToContainerPoint(map.getCenter());
+
+          if (!offscreenIndicatorsContainer) {
+              console.error("Offscreen indicators container not found.");
+              return;
+          }
+          
+          // 현재 화면에 보이는 마커들의 ID를 추적하여 필요 없는 지표 제거에 사용
+          const visibleMarkerIds = new Set(); 
+
+          selectedData.forEach(marker => {
+              const markerLatLng = L.latLng(marker.lat, marker.lng);
+              // 마커의 고유 ID (이름, 위도, 경도 조합)
+              const markerId = marker.name + '_' + marker.lat + '_' + marker.lng; 
+              
+              // 마커가 현재 지도 화면 밖에 있는지 확인
+              if (!mapBounds.contains(markerLatLng)) {
+                  visibleMarkerIds.add(markerId); // 지표가 필요한 마커로 표시
+
+                  let indicator = offscreenIndicators[markerId];
+
+                  if (!indicator) {
+                      // 지표가 없으면 새로 생성
+                      indicator = document.createElement('div');
+                      indicator.className = 'offscreen-indicator';
+                      indicator.title = marker.name; // 마우스 오버 시 마커 이름 표시
+                      offscreenIndicatorsContainer.appendChild(indicator);
+                      offscreenIndicators[markerId] = indicator;
+
+                      // ✨ 클릭 이벤트 리스너 추가: 내비게이션 모달 열기
+                      indicator.addEventListener('click', () => {
+                          openNavModal(marker.name, marker.address);
+                      });
+                  }
+
+                  // 마커의 픽셀 좌표 (지도 컨테이너 기준)
+                  const markerContainerPoint = map.latLngToContainerPoint(markerLatLng);
+
+                  // 지도 중심에서 마커까지의 벡터
+                  const dx = markerContainerPoint.x - centerPoint.x;
+                  const dy = markerContainerPoint.y - centerPoint.y;
+
+                  // 벡터의 각도 (라디안) 계산
+                  const angle = Math.atan2(dy, dx);
+                  
+                  // CSS rotation (▶ points right by default)
+                  const rotationDegrees = angle * (180 / Math.PI); 
+
+                  let intersectionX, intersectionY;
+                  let minT = Infinity;
+
+                  // Helper function to calculate t and validate it for a given boundary
+                  const calculateT = (numerator, denominator) => {
+                      // 0으로 나누는 경우 방지 (평행한 경우)
+                      if (denominator === 0) return Infinity; 
+                      const t_val = numerator / denominator;
+                      // 중심에서 멀어지는 방향의 t 값만 유효 (음수는 뒤쪽)
+                      if (t_val >= 0) return t_val; 
+                      return Infinity;
+                  };
+
+                  // 수직 경계 (왼쪽/오른쪽)와 교차점 확인
+                  let t_x_left = calculateT(0 - centerPoint.x, dx);
+                  let t_x_right = calculateT(mapWidth - centerPoint.x, dx);
+
+                  if (t_x_left !== Infinity) {
+                      const y_at_left = centerPoint.y + t_x_left * dy;
+                      // 해당 교차점의 y 좌표가 유효한 범위 내에 있는지 확인
+                      if (y_at_left >= 0 && y_at_left <= mapHeight) {
+                          minT = Math.min(minT, t_x_left);
+                      }
+                  }
+                  if (t_x_right !== Infinity) {
+                      const y_at_right = centerPoint.y + t_x_right * dy;
+                      // 해당 교차점의 y 좌표가 유효한 범위 내에 있는지 확인
+                      if (y_at_right >= 0 && y_at_right <= mapHeight) {
+                          minT = Math.min(minT, t_x_right);
+                      }
+                  }
+
+                  // 수평 경계 (상단/하단)와 교차점 확인
+                  let t_y_top = calculateT(0 - centerPoint.y, dy);
+                  let t_y_bottom = calculateT(mapHeight - centerPoint.y, dy);
+
+                  if (t_y_top !== Infinity) {
+                      const x_at_top = centerPoint.x + t_y_top * dx;
+                      // 해당 교차점의 x 좌표가 유효한 범위 내에 있는지 확인
+                      if (x_at_top >= 0 && x_at_top <= mapWidth) {
+                          minT = Math.min(minT, t_y_top);
+                      }
+                  }
+                  if (t_y_bottom !== Infinity) {
+                      const x_at_bottom = centerPoint.x + t_y_bottom * dx;
+                      // 해당 교차점의 x 좌표가 유효한 범위 내에 있는지 확인
+                      if (x_at_bottom >= 0 && x_at_bottom <= mapWidth) {
+                          minT = Math.min(minT, t_y_bottom);
+                      }
+                  }
+
+                  // 최종 교차점 계산
+                  if (minT === Infinity) {
+                      // 모든 경계와 교차하지 않는 드문 경우 (예: 마커가 지도 중심에 있거나, 선이 경계를 벗어나지 않는 경우)
+                      // 이 경우, 임시로 이전의 고정 거리 클램핑 방식을 사용 (화면 중간쯤에 위치)
+                      const indicatorSize = 60;
+                      const halfSize = indicatorSize / 2;
+                      const fallbackDistance = Math.max(mapWidth, mapHeight) * 0.45; // 화면 중간에 가깝게
+
+                      intersectionX = centerPoint.x + fallbackDistance * Math.cos(angle);
+                      intersectionY = centerPoint.y + fallbackDistance * Math.sin(angle);
+
+                      // 최종적으로 화면 범위 내로 클램핑 (지표가 잘리지 않도록)
+                      intersectionX = Math.max(halfSize, Math.min(intersectionX, mapWidth - halfSize));
+                      intersectionY = Math.max(halfSize, Math.min(intersectionY, mapHeight - halfSize));
+
+                  } else {
+                      // 가장 가까운 경계 교차점을 지표의 중앙 위치로 설정
+                      intersectionX = centerPoint.x + minT * dx;
+                      intersectionY = centerPoint.y + minT * dy;
+
+                      // 지표가 화면 밖으로 잘리지 않도록 최종적으로 클램핑 (지표 크기 고려)
+                      const indicatorSize = 60; // CSS에 정의된 지표 크기
+                      const halfSize = indicatorSize / 2;
+                      intersectionX = Math.max(halfSize, Math.min(intersectionX, mapWidth - halfSize));
+                      intersectionY = Math.max(halfSize, Math.min(intersectionY, mapHeight - halfSize));
+                  }
+                  
+                  // 지표 스타일 적용 및 내용 설정
+                  indicator.style.left = `${intersectionX}px`;
+                  indicator.style.top = `${intersectionY}px`;
+                  indicator.style.transform = `translate(-50%, -50%)`; // 컨테이너는 중앙 정렬만 담당
+
+                  // 화살표와 마커 이름 함께 표시
+                  // ✨ 화살표 아이콘을 꼬리 달린 화살표로 변경 (➔)
+                  indicator.innerHTML = `<div class="arrow-icon">➔</div><div class="marker-name-text">${marker.name}</div>`;
+                  
+                  // ✨ 화살표 아이콘만 회전
+                  const arrowIcon = indicator.querySelector('.arrow-icon');
+                  if (arrowIcon) {
+                      arrowIcon.style.transform = `rotate(${rotationDegrees}deg)`;
+                  }
+                  indicator.style.display = 'flex'; // 지표를 보이도록 설정
+              } else {
+                  // 마커가 화면 안에 있으면 해당 지표를 숨김
+                  const indicator = offscreenIndicators[markerId];
+                  if (indicator) {
+                      indicator.style.display = 'none';
+                  }
+              }
+          });
+
+          // 이제 더 이상 화면 밖에 있지 않거나 (화면 안으로 들어왔거나)
+          // selectedData에서 삭제된 마커의 지표를 제거
+          Object.keys(offscreenIndicators).forEach(markerId => {
+              if (!visibleMarkerIds.has(markerId)) {
+                  if (offscreenIndicators[markerId]) {
+                      offscreenIndicatorsContainer.removeChild(offscreenIndicators[markerId]);
+                  }
+                  delete offscreenIndicators[markerId];
+              }
+          });
+      }
+
+      // ✨ 화면 밖 마커 표시/숨기기 토글 기능
+      toggleOffscreenMarkersBtn.addEventListener('click', () => {
+          const isHidden = offscreenIndicatorsContainer.style.display === 'none';
+          if (isHidden) {
+              offscreenIndicatorsContainer.style.display = 'block';
+              toggleOffscreenMarkersBtn.textContent = '화면 밖 마커 숨기기';
+              localStorage.setItem('offscreenMarkersVisible', 'true');
+          } else {
+              offscreenIndicatorsContainer.style.display = 'none';
+              toggleOffscreenMarkersBtn.textContent = '화면 밖 마커 표시';
+              localStorage.setItem('offscreenMarkersVisible', 'false');
+          }
+          updateOffscreenIndicators(); // 상태 변경 후 지표 업데이트 강제 실행
+      });
+
+      // 선택 리스트 엑셀 다운로드
+      downloadBtn.addEventListener('click', () => {
+        if (selectedData.length === 0) {
+          alert("선택된 리스트가 없습니다.");
+          return;
+        }
+        const worksheetData = [
+          ["업체명", "주소", "위도", "경도"],
+          ...selectedData.map(item => [item.name, item.address, item.lat, item.lng])
+        ];
+        const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "SelectedList");
+        XLSX.writeFile(workbook, "selected_list.xlsx");
+      });
+
+      // Google Geocoding API를 이용한 주소 → 위도경도 변환 함수
+      async function getCoordsByAddress(address) {
+        const apiKey = "AIzaSyBxaNCAfmnLjdC_qxdG3lhuRVHOh0Vii8w"; // 구글 API 키
+        const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
+
+        try {
+          console.log("주소 변환 요청:", address);
+          const res = await fetch(url);
+          console.log("응답 상태:", res.status);
+          if (!res.ok) {
+            console.error("API 요청 실패", res.status);
+            return null;
+          }
+          const data = await res.json();
+          console.log("응답 데이터:", data);
+
+          if (data.status === "OK" && data.results.length > 0) {
+            const location = data.results[0].geometry.location;
+            return {
+              lat: location.lat,
+              lng: location.lng
             };
-            checkElement();
-        });
-    }
-
-    // ✨ 겹침 방지 및 8방향 탐색 로직
-    const directions = [
-        L.point(1, 0),    // 오른쪽
-        L.point(1, -1),   // 오른쪽 위
-        L.point(0, -1),   // 위
-        L.point(-1, -1),  // 왼쪽 위
-        L.point(-1, 0),   // 왼쪽
-        L.point(-1, 1),   // 왼쪽 아래
-        L.point(0, 1),    // 아래
-        L.point(1, 1)     // 오른쪽 아래
-    ];
-
-    let overlapped = true;
-    let iteration = 0;
-
-    while (overlapped && iteration < maxOverlapIterations) {
-        overlapped = false; // 이번 반복에서 겹침이 있었는지 여부
-        
-        // 각 라벨에 대해 겹침 여부 확인
-        for (let i = 0; i < markersWithPos.length; i++) {
-            const currentLabel = markersWithPos[i];
-            const currentBounds = L.bounds(currentLabel.pos, currentLabel.pos.add([currentLabel.width, currentLabel.height]));
-            
-            let hasOverlap = false;
-
-            for (let j = 0; j < markersWithPos.length; j++) {
-                if (i === j) continue; // 자기 자신 제외
-                
-                const otherLabel = markersWithPos[j];
-                const otherBounds = L.bounds(otherLabel.pos, otherLabel.pos.add([otherLabel.width, otherLabel.height]));
-
-                if (currentBounds.intersects(otherBounds)) {
-                    hasOverlap = true;
-                    overlapped = true; // 전체 겹침 플래그 설정
-                    break; // 현재 라벨이 다른 라벨과 겹쳤으므로 더 이상 비교할 필요 없음
-                }
-            }
-
-            if (hasOverlap) {
-                // 겹쳤을 경우 8방향 탐색하여 빈 곳 찾기
-                let foundSpot = false;
-                // 현재 라벨의 원래 픽셀 위치를 기준으로 탐색
-                const basePixelPos = map.latLngToLayerPoint(currentLabel.originalLatLng);
-
-                for (const dir of directions) {
-                    // 새로운 제안 위치는 원본 마커 위치에서 특정 방향으로 이동
-                    const proposedPos = basePixelPos.add(dir.multiplyBy(baseOffset + labelMoveStep * iteration)); 
-                    
-                    // 제안된 위치에 라벨을 놓았을 때 겹침이 없는지 확인
-                    const proposedBounds = L.bounds(proposedPos, proposedPos.add([currentLabel.width, currentLabel.height]));
-                    
-                    let conflict = false;
-                    for (let k = 0; k < markersWithPos.length; k++) {
-                        if (i === k) continue; 
-                        const existingLabel = markersWithPos[k];
-                        const existingBounds = L.bounds(existingLabel.pos, existingLabel.pos.add([existingLabel.width, existingLabel.height]));
-                        
-                        if (proposedBounds.intersects(existingBounds)) {
-                            conflict = true;
-                            break;
-                        }
-                    }
-
-                    if (!conflict) {
-                        currentLabel.pos = proposedPos; // 빈 곳 찾으면 위치 업데이트
-                        foundSpot = true;
-                        break; // 이번 라벨은 위치를 찾았으니 다음 라벨로 이동
-                    }
-                }
-
-                // 모든 방향을 탐색했지만 빈 곳을 찾지 못했다면, 현재 위치에서 조금 더 밀어내는 등 다른 전략이 필요할 수 있으나
-                // 여기서는 다음 반복에서 다시 시도하도록 둠. (maxOverlapIterations에 의해 제한됨)
-                if (!foundSpot) {
-                    // Fallback: 겹쳤지만 빈 공간을 찾지 못한 경우,
-                    // 기존 물리 시뮬레이션의 일부를 사용하여 약간 밀어내는 방식을
-                    // 재도입하여 완전히 고착되는 것을 방지할 수도 있음.
-                    // 현재는 그냥 둔다. 다음 반복에서 더 큰 step으로 다시 시도.
-                }
-            }
+          } else {
+            console.warn("주소 검색 결과 없음 또는 오류 상태:", data.status);
+            return null;
+          }
+        } catch (e) {
+          console.error("주소 변환 에러", e);
+          return null;
         }
-        iteration++;
-        await new Promise(r => setTimeout(r, 0)); // UI 갱신을 위한 지연
-    }
-
-    // 최종 라벨 위치를 기반으로 연결선 그리고 라벨 마커 업데이트
-    window.labelLinesGroup.clearLayers();
-
-    markersWithPos.forEach(({ marker, pos, originalLatLng }) => {
-        const labelLatLng = map.layerPointToLatLng(pos); 
-
-        const line = L.polyline([originalLatLng, labelLatLng], {
-            color: 'red',
-            weight: 2,
-            pane: 'overlayPane' 
-        });
-        window.labelLinesGroup.addLayer(line);
-        marker.setLatLng(labelLatLng); 
-    });
-}
-
-
-
-
-
-
-    // 선택 리스트 엑셀 다운로드
-    downloadBtn.addEventListener('click', () => {
-      if (selectedData.length === 0) {
-        alert("선택된 리스트가 없습니다.");
-        return;
       }
+
+      // 주소만 포함 엑셀 업로드
+      inputExcelAddr.addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = evt => {
+          const data = new Uint8Array(evt.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+          addrOnlyData = jsonData.slice(1).map(row => ({
+            name: row[0] || '',
+            address: row[1] || '',
+            lat: 0,
+            lng: 0
+          }));
+          alert(`주소 데이터 ${addrOnlyData.length}건 준비 완료`);
+        };
+        reader.readAsArrayBuffer(file);
+      });
+
+      // 변환 버튼 클릭 시 비밀번호 모달 띄우기
+      convertBtn.addEventListener('click', () => {
+        if (addrOnlyData.length === 0) {
+          alert("주소 데이터가 없습니다.");
+          return;
+        }
+        passwordInput.value = '';
+        passwordError.style.display = 'none';
+        passwordModal.classList.add('flex');
+        passwordInput.focus();
+      });
+
+      // 비밀번호 확인 버튼
+      passwordSubmit.addEventListener('click', async () => {
+        const entered = passwordInput.value;
+        if (entered === correctPassword) {
+          passwordModal.classList.remove('flex');
+          await convertAddressesToCoords();
+        } else {
+          passwordError.style.display = 'block';
+          passwordInput.focus();
+        }
+      });
+
+      // 비밀번호 취소 버튼
+      passwordCancel.addEventListener('click', () => {
+        passwordModal.classList.remove('flex');
+      });
+
+      // 엔터키 눌렀을 때 확인 처리
+      passwordInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          passwordSubmit.click();
+        }
+      });
+
+      // 주소 변환 + 다운로드 함수
+      async function convertAddressesToCoords() {
+      loadingIndicator.style.display = 'block';
+
+      for(let i = 0; i < addrOnlyData.length; i++) {
+          const item = addrOnlyData[i];
+          if (!item.address || item.address.trim() === '') {
+          item.lat = 0;
+          item.lng = 0;
+          continue;
+          }
+          const coords = await getCoordsByAddress(item.address);
+          if(coords) {
+          item.lat = coords.lat;
+          item.lng = coords.lng;
+          } else {
+          item.lat = 0;
+          item.lng = 0;
+          }
+          await new Promise(r => setTimeout(r, 300)); // API 요청 속도 조절
+      }
+
+      // lat,lng가 0인 항목 제거
+      const filteredData = addrOnlyData.filter(item => !(item.lat === 0 && item.lng === 0));
+
       const worksheetData = [
-        ["업체명", "주소", "위도", "경도"],
-        ...selectedData.map(item => [item.name, item.address, item.lat, item.lng])
+          ["업체명", "주소", "위도", "경도"],
+          ...filteredData.map(item => [item.name, item.address, item.lat, item.lng])
       ];
       const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "SelectedList");
-      XLSX.writeFile(workbook, "selected_list.xlsx");
-    });
+      XLSX.utils.book_append_sheet(workbook, worksheet, "ConvertedCoords");
+      XLSX.writeFile(workbook, "converted_coordinates.xlsx");
 
-    // Google Geocoding API를 이용한 주소 → 위도경도 변환 함수
-    async function getCoordsByAddress(address) {
-      const apiKey = "AIzaSyBxaNCAfmnLjdC_qxdG3lhuRVHOh0Vii8w"; // 구글 API 키
-      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
-
-      try {
-        console.log("주소 변환 요청:", address);
-        const res = await fetch(url);
-        console.log("응답 상태:", res.status);
-        if (!res.ok) {
-          console.error("API 요청 실패", res.status);
-          return null;
-        }
-        const data = await res.json();
-        console.log("응답 데이터:", data);
-
-        if (data.status === "OK" && data.results.length > 0) {
-          const location = data.results[0].geometry.location;
-          return {
-            lat: location.lat,
-            lng: location.lng
-          };
-        } else {
-          console.warn("주소 검색 결과 없음 또는 오류 상태:", data.status);
-          return null;
-        }
-      } catch (e) {
-        console.error("주소 변환 에러", e);
-        return null;
+      loadingIndicator.style.display = 'none';
       }
-    }
-
-    // 주소만 포함 엑셀 업로드
-    inputExcelAddr.addEventListener('change', e => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = evt => {
-        const data = new Uint8Array(evt.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-        addrOnlyData = jsonData.slice(1).map(row => ({
-          name: row[0] || '',
-          address: row[1] || '',
-          lat: 0,
-          lng: 0
-        }));
-        alert(`주소 데이터 ${addrOnlyData.length}건 준비 완료`);
-      };
-      reader.readAsArrayBuffer(file);
-    });
-
-    // 변환 버튼 클릭 시 비밀번호 모달 띄우기
-    convertBtn.addEventListener('click', () => {
-      if (addrOnlyData.length === 0) {
-        alert("주소 데이터가 없습니다.");
-        return;
-      }
-      passwordInput.value = '';
-      passwordError.style.display = 'none';
-      passwordModal.classList.add('flex');
-      passwordInput.focus();
-    });
-
-    // 비밀번호 확인 버튼
-    passwordSubmit.addEventListener('click', async () => {
-      const entered = passwordInput.value;
-      if (entered === correctPassword) {
-        passwordModal.classList.remove('flex');
-        await convertAddressesToCoords();
-      } else {
-        passwordError.style.display = 'block';
-        passwordInput.focus();
-      }
-    });
-
-    // 비밀번호 취소 버튼
-    passwordCancel.addEventListener('click', () => {
-      passwordModal.classList.remove('flex');
-    });
-
-    // 엔터키 눌렀을 때 확인 처리
-    passwordInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        passwordSubmit.click();
-      }
-    });
-
-    // 주소 변환 + 다운로드 함수
-    async function convertAddressesToCoords() {
-    loadingIndicator.style.display = 'block';
-
-    for(let i = 0; i < addrOnlyData.length; i++) {
-        const item = addrOnlyData[i];
-        if (!item.address || item.address.trim() === '') {
-        item.lat = 0;
-        item.lng = 0;
-        continue;
-        }
-        const coords = await getCoordsByAddress(item.address);
-        if(coords) {
-        item.lat = coords.lat;
-        item.lng = coords.lng;
-        } else {
-        item.lat = 0;
-        item.lng = 0;
-        }
-        await new Promise(r => setTimeout(r, 300)); // API 요청 속도 조절
-    }
-
-    // lat,lng가 0인 항목 제거
-    const filteredData = addrOnlyData.filter(item => !(item.lat === 0 && item.lng === 0));
-
-    const worksheetData = [
-        ["업체명", "주소", "위도", "경도"],
-        ...filteredData.map(item => [item.name, item.address, item.lat, item.lng])
-    ];
-    const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "ConvertedCoords");
-    XLSX.writeFile(workbook, "converted_coordinates.xlsx");
-
-    loadingIndicator.style.display = 'none';
-    }
-    // 지도 확대 축소 시 마커 및 라벨 재배치
-    map.on('zoomend', () => {
-      refreshMap();
-    });
-
-    // 내위치표시시
-    const locateBtn = document.getElementById('locate-btn');
-    let userLocationMarker = null;
-
-    locateBtn.addEventListener('click', () => {
-    if (!navigator.geolocation) {
-        alert("현재 브라우저에서 위치 정보를 지원하지 않습니다.");
-        return;
-    }
-
-    locateBtn.disabled = true;
-    locateBtn.textContent = "위치 탐색 중...";
-
-    navigator.geolocation.getCurrentPosition(
-        position => {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-
-        if (userLocationMarker) {
-            userLocationMarker.setLatLng([lat, lng]);
-        } else {
-            userLocationMarker = L.marker([lat, lng], {
-            title: "내 위치",
-            icon: L.divIcon({
-                className: '',
-                html: `<div style="
-                width: 14px;
-                height: 14px;
-                background: blue;
-                border: 3px solid white;
-                border-radius: 50%;
-                box-shadow: 0 0 8px 2px rgba(0,0,255,0.7);
-                "></div>`,
-                iconSize: [30, 30],
-                iconAnchor: [15, 15],
-                popupAnchor: [0, -15]
-            })
-            }).addTo(map).bindPopup("내 위치");
-        }
-
-        map.setView([lat, lng], 11);
-        userLocationMarker.openPopup();
-
-        locateBtn.disabled = false;
-        locateBtn.textContent = "내 위치 표시";
-        },
-        error => {
-        alert("위치 정보를 가져오는 데 실패했습니다: " + error.message);
-        locateBtn.disabled = false;
-        locateBtn.textContent = "내 위치 표시";
-        }
-    );
-    });
-
-
-
-    // 로컬스토리지 저장 함수
-    function saveSelectedToLocalStorage() {
-    localStorage.setItem('selectedData', JSON.stringify(selectedData));
-    }
-
-    // 로컬스토리지 불러오기 함수
-    function loadSelectedFromLocalStorage() {
-    const stored = localStorage.getItem('selectedData');
-    if (stored) {
-        try {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-            selectedData = parsed;
-            renderSelected();
-        }
-        } catch (e) {
-        console.error("로컬스토리지 파싱 오류", e);
-        }
-    }
-    }
-
-    // 선택 리스트 초기화 버튼
-    document.getElementById('clear-selected').addEventListener('click', () => {
-      if (confirm("선택된 리스트를 모두 삭제하시겠습니까?")) {
-          selectedData = [];
-          renderSelected();
-          localStorage.removeItem('selectedData');
-      }
-    });
-
-    //수정된 add/removeSelected 함수(로컬스토리지 저장)
-    function addSelected(row) {
-      if (!selectedData.some(item => item.name === row.name && item.lat === row.lat && item.lng === row.lng)) {
-          selectedData.push(row);
-          renderSelected();
-          saveSelectedToLocalStorage(); // 저장
-      }
-    }
-    function removeSelected(idx) {
-      selectedData.splice(idx, 1);
-      renderSelected();
-      saveSelectedToLocalStorage(); // 저장
-    }
-
-
-
-    // 검색결과 로컬스토리지 저장
-    function saveFullDataToLocalStorage() {
-      localStorage.setItem('fullData', JSON.stringify(fullData));
-    }
-
-    // 검색결과 로컬스토리지 불러오기
-    function loadFullDataFromLocalStorage() {
-      const stored = localStorage.getItem('fullData');
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed)) {
-            fullData = parsed;
-            renderTable(fullData);
-          }
-        } catch (e) {
-          console.error("fullData 파싱 오류", e);
-        }
-      }
-    }
-
-    // 검색결과 초기화 버튼 이벤트
-    document.getElementById('clear-search-result').addEventListener('click', () => {
-      if (confirm("검색 결과를 초기화하시겠습니까?")) {
-        fullData = [];
-        renderTable(fullData);
-        localStorage.removeItem('fullData');
-      }
-    });
-
-    // 검색어 입력시 렌더링 후 저장
-    searchInput.addEventListener('input', function() {
-      const keyword = this.value.trim().toLowerCase();
-      if (!keyword) {
-        renderTable(fullData);
-        saveFullDataToLocalStorage();
-        return;
-      }
-      const filtered = fullData.filter(row => row.name.toLowerCase().includes(keyword));
-      renderTable(filtered);
-      saveFullDataToLocalStorage();
-    });
-
-    // 엑셀 업로드 후 렌더링 및 저장
-    inputExcel.addEventListener('change', e => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = evt => {
-        const data = new Uint8Array(evt.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-        fullData = jsonData.slice(1).map(row => ({
-          name: row[0] || '',
-          address: row[1] || '',
-          lat: row[2] !== undefined ? parseFloat(row[2]) || 0 : 0,
-          lng: row[3] !== undefined ? parseFloat(row[3]) || 0 : 0
-        }));
-        renderTable(fullData);
-        saveFullDataToLocalStorage();
-      };
-      reader.readAsArrayBuffer(file);
-    });
-
-
-
-    document.getElementById('select-all-search-results').addEventListener('click', () => {
-      // 현재 주소 테이블에 보이는 데이터(=검색결과) 기준으로 전체 선택 리스트에 추가
-      const rows = tbody.querySelectorAll('tr');
-      rows.forEach(tr => {
-        const cells = tr.children;
-        const rowData = {
-          name: cells[0].textContent,
-          address: cells[1].textContent,
-          lat: parseFloat(cells[2].textContent),
-          lng: parseFloat(cells[3].textContent)
-        };
-        // 중복 확인 후 추가
-        if (!selectedData.some(item => item.name === rowData.name && item.lat === rowData.lat && item.lng === rowData.lng)) {
-          selectedData.push(rowData);
-        }
+      // 지도 확대 축소 시 마커 및 라벨 재배치
+      map.on('zoomend', () => {
+        refreshMap();
+        updateOffscreenIndicators(); // ✨ 줌 변경 시 지표도 업데이트
       });
-      renderSelected();
-      saveSelectedToLocalStorage();
-    });
+
+      // ✨ 지도 이동 시 지표 업데이트
+      map.on('moveend', updateOffscreenIndicators);
 
 
+      // 내위치표시시
+      const locateBtn = document.getElementById('locate-btn');
+      let userLocationMarker = null;
 
-    window.addEventListener('DOMContentLoaded', () => {
-      // 로컬스토리지에서 선택된 리스트 및 전체 리스트 불러오기
-      loadSelectedFromLocalStorage();
-      loadFullDataFromLocalStorage();
+      locateBtn.addEventListener('click', () => {
+      if (!navigator.geolocation) {
+          alert("현재 브라우저에서 위치 정보를 지원하지 않습니다.");
+          return;
+      }
 
-      // 모바일 여부 확인 (가로폭 768px 이하)
-      const isMobile = window.innerWidth <= 768;
+      locateBtn.disabled = true;
+      locateBtn.textContent = "위치 탐색 중...";
 
-      // 모바일이고 위치 정보 사용 가능하면
-      if (isMobile && navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
+      navigator.geolocation.getCurrentPosition(
           position => {
-            // 현재 위치 좌표 받아오기
-            const lat = position.coords.latitude;
-            const lng = position.coords.longitude;
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
 
-            // 지도 중심을 내 위치로 설정
-            map.setView([lat, lng], 11);
-
-            // 지도가 보이도록 강제로 크기 재계산
-            map.whenReady(() => {
-              map.invalidateSize();
-            });
-
-            // 내 위치 마커가 이미 있으면 위치만 이동, 없으면 새로 생성
-            if (userLocationMarker) {
+          if (userLocationMarker) {
               userLocationMarker.setLatLng([lat, lng]);
-            } else {
+          } else {
               userLocationMarker = L.marker([lat, lng], {
-                title: "내 위치",
-                icon: L.divIcon({
+              title: "내 위치",
+              icon: L.divIcon({
                   className: '',
                   html: `<div style="
-                    width: 14px;
-                    height: 14px;
-                    background: blue;
-                    border: 3px solid white;
-                    border-radius: 50%;
-                    box-shadow: 0 0 8px 2px rgba(0,0,255,0.7);
+                  width: 24px;
+                  height: 24px;
+                  background: blue;
+                  border: 3px solid white;
+                  border-radius: 50%;
+                  box-shadow: 0 0 8px 2px rgba(0,0,255,0.7);
                   "></div>`,
-                  iconSize: [30, 30],
-                  iconAnchor: [15, 15],
-                  popupAnchor: [0, -15]
-                })
-              }).addTo(map).bindPopup("내 위치").openPopup();
-            }
+                  iconSize: [60, 60], /* 변경: [30, 30] -> [60, 60] */
+                  iconAnchor: [30, 30], /* 변경: [15, 15] -> [30, 30] */
+                  popupAnchor: [0, -30] /* 변경: [0, -15] -> [0, -30] */
+              })
+              }).addTo(map).bindPopup("내 위치");
+          }
+
+          map.setView([lat, lng], 11);
+          userLocationMarker.openPopup();
+
+          locateBtn.disabled = false;
+          locateBtn.textContent = "내 위치 표시";
+          updateOffscreenIndicators(); // ✨ 내 위치 표시 후 지표도 업데이트
           },
           error => {
-            // 위치 정보를 가져오는 데 실패하면 내 회사 위치로 이동
-            console.warn("GPS 실패: 내 회사 위치로 초기화");
-            map.setView([myCompany.lat, myCompany.lng], 11);
-            map.whenReady(() => map.invalidateSize());
+          alert("위치 정보를 가져오는 데 실패했습니다: " + error.message);
+          locateBtn.disabled = false;
+          locateBtn.textContent = "내 위치 표시";
           }
-        );
-      } else {
-        // 데스크탑이거나 GPS 미지원인 경우 내 회사 위치로 초기화
-        map.setView([myCompany.lat, myCompany.lng], 11);
-        map.whenReady(() => map.invalidateSize());
+      );
+      });
+
+      // 로컬스토리지 저장 함수
+      function saveSelectedToLocalStorage() {
+      localStorage.setItem('selectedData', JSON.stringify(selectedData));
       }
-    });
+
+      // 로컬스토리지 불러오기 함수
+      function loadSelectedFromLocalStorage() {
+      const stored = localStorage.getItem('selectedData');
+      if (stored) {
+          try {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+              selectedData = parsed;
+              renderSelected();
+          }
+          } catch (e) {
+          console.error("로컬스토리지 파싱 오류", e);
+          }
+      }
+      }
+
+      // 선택 리스트 초기화 버튼
+      document.getElementById('clear-selected').addEventListener('click', () => {
+        if (confirm("선택된 리스트를 모두 삭제하시겠습니까?")) {
+            selectedData = [];
+            renderSelected();
+            localStorage.removeItem('selectedData');
+            updateOffscreenIndicators(); // ✨ 초기화 후 지표도 업데이트
+        }
+      });
+
+      //수정된 add/removeSelected 함수(로컬스토리지 저장)
+      function addSelected(row) {
+        if (!selectedData.some(item => item.name === row.name && item.lat === row.lat && item.lng === row.lng)) {
+            selectedData.push(row);
+            renderSelected();
+            saveSelectedToLocalStorage(); // 저장
+        }
+      }
+      function removeSelected(idx) {
+        selectedData.splice(idx, 1);
+        renderSelected();
+        saveSelectedToLocalStorage(); // 저장
+      }
+
+      // 검색결과 로컬스토리지 저장
+      function saveFullDataToLocalStorage() {
+        localStorage.setItem('fullData', JSON.stringify(fullData));
+      }
+
+      // 검색결과 로컬스토리지 불러오기
+      function loadFullDataFromLocalStorage() {
+        const stored = localStorage.getItem('fullData');
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored);
+            if (Array.isArray(parsed)) {
+              fullData = parsed;
+              renderTable(fullData);
+            }
+          } catch (e) {
+            console.error("fullData 파싱 오류", e);
+          }
+        }
+      }
+
+      // 검색결과 초기화 버튼 이벤트
+      document.getElementById('clear-search-result').addEventListener('click', () => {
+        if (confirm("검색 결과를 초기화하시겠습니까?")) {
+          fullData = [];
+          renderTable(fullData);
+          localStorage.removeItem('fullData');
+        }
+      });
+
+      // 엑셀 업로드 후 렌더링 및 저장
+      inputExcel.addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = evt => {
+          const data = new Uint8Array(evt.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+          fullData = jsonData.slice(1).map(row => ({
+            name: row[0] || '',
+            address: row[1] || '',
+            lat: row[2] !== undefined ? parseFloat(row[2]) || 0 : 0,
+            lng: row[3] !== undefined ? parseFloat(row[3]) || 0 : 0
+          }));
+          renderTable(fullData);
+          saveFullDataToLocalStorage();
+        };
+        reader.readAsArrayBuffer(file);
+      });
+
+      document.getElementById('select-all-search-results').addEventListener('click', () => {
+        // 현재 주소 테이블에 보이는 데이터(=검색결과) 기준으로 전체 선택 리스트에 추가
+        const rows = tbody.querySelectorAll('tr');
+        rows.forEach(tr => {
+          const cells = tr.children;
+          const rowData = {
+            name: cells[0].textContent,
+            address: cells[1].textContent,
+            lat: parseFloat(cells[2].textContent), // 위도 데이터 가져오기
+            lng: parseFloat(cells[3].textContent)  // 경도 데이터 가져오기
+          };
+          // 중복 확인 후 추가
+          if (!selectedData.some(item => item.name === rowData.name && item.lat === rowData.lat && item.lng === rowData.lng)) {
+            selectedData.push(rowData);
+          }
+        });
+        renderSelected();
+        saveSelectedToLocalStorage();
+      });
+
+      window.addEventListener('DOMContentLoaded', () => {
+        // 로컬스토리지에서 선택된 리스트 및 전체 리스트 불러오기
+        loadSelectedFromLocalStorage();
+        loadFullDataFromLocalStorage();
+
+        // 모바일 여부 확인 (가로폭 768px 이하)
+        const isMobileDevice = window.innerWidth <= 768; // isMobile 함수와는 별개로 사용 (초기 로드 시 판단용)
+        let offscreenMarkersInitiallyVisible = false; // 초기 지표 표시 여부
+
+        // 1. 로컬 스토리지에서 이전 설정 불러오기
+        const storedVisibility = localStorage.getItem('offscreenMarkersVisible');
+        if (storedVisibility !== null) {
+            offscreenMarkersInitiallyVisible = (storedVisibility === 'true');
+        } else {
+            // 2. 로컬 스토리지에 설정이 없으면 환경에 따라 기본값 설정
+            offscreenMarkersInitiallyVisible = !isMobileDevice; // PC면 보이기, 모바일이면 숨기기
+        }
+
+        // 3. offscreen-indicators-container 초기 상태 설정
+        if (offscreenMarkersInitiallyVisible) {
+            offscreenIndicatorsContainer.style.display = 'block';
+            toggleOffscreenMarkersBtn.textContent = '화면 밖 마커 숨기기';
+        } else {
+            offscreenIndicatorsContainer.style.display = 'none';
+            toggleOffscreenMarkersBtn.textContent = '화면 밖 마커 표시';
+        }
 
 
-    
+        // 모바일이고 위치 정보 사용 가능하면
+        if (isMobileDevice && navigator.geolocation) { // isMobileDevice 변수 사용
+          navigator.geolocation.getCurrentPosition(
+            position => {
+              // 현재 위치 좌표 받아오기
+              const lat = position.coords.latitude;
+              const lng = position.coords.longitude;
+
+              // 지도 중심을 내 위치로 설정
+              map.setView([lat, lng], 11);
+
+              // 지도가 보이도록 강제로 크기 재계산
+              map.whenReady(() => {
+                map.invalidateSize();
+                updateOffscreenIndicators(); // ✨ 초기 로드 시 지표 업데이트
+              });
+
+              // 내 위치 마커가 이미 있으면 위치만 이동, 없으면 새로 생성
+              if (userLocationMarker) {
+                userLocationMarker.setLatLng([lat, lng]);
+              } else {
+                userLocationMarker = L.marker([lat, lng], {
+                  title: "내 위치",
+                  icon: L.divIcon({
+                    className: '',
+                    html: `<div style="
+                      width: 24px;
+                      height: 24px;
+                      background: blue;
+                      border: 3px solid white;
+                      border-radius: 50%;
+                      box-shadow: 0 0 8px 2px rgba(0,0,255,0.7);
+                    "></div>`,
+                    iconSize: [30, 30],
+                    iconAnchor: [15, 15],
+                    popupAnchor: [0, -15]
+                  })
+                }).addTo(map).bindPopup("내 위치").openPopup();
+              }
+            },
+            error => {
+              // 위치 정보를 가져오는 데 실패하면 내 회사 위치로 이동
+              console.warn("GPS 실패: 내 회사 위치로 초기화");
+              map.setView([myCompany.lat, myCompany.lng], 11);
+              map.whenReady(() => {
+                map.invalidateSize();
+                updateOffscreenIndicators(); // ✨ 초기 로드 시 지표 업데이트
+              });
+            }
+          );
+        } else {
+          // 데스크탑이거나 GPS 미지원인 경우 내 회사 위치로 초기화
+          map.setView([myCompany.lat, myCompany.lng], 11);
+          map.whenReady(() => {
+            map.invalidateSize();
+            updateOffscreenIndicators(); // ✨ 초기 로드 시 지표 업데이트
+          });
+        }
+      });
+
+      // ✨ 화면 크기가 변경될 때마다 지도 크기를 다시 계산하여 올바르게 표시되도록 함
+      window.addEventListener('resize', function() {
+          map.invalidateSize();
+          updateOffscreenIndicators(); // ✨ 화면 리사이즈 시 지표도 업데이트
+      });
   </script>
+
+
 </body>
 </html>
