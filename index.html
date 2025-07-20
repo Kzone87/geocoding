@@ -366,6 +366,8 @@
       <input type="file" id="input-excel" accept=".xlsx,.xls" />
       <input type="text" id="search-input" placeholder="🔍 업체명 검색" />
 
+      <button id="load-from-api">📡 API에서 업체 목록 가져오기</button>
+
       <h4>검색 결과 (클릭하여 선택)</h4>
       <button id="select-all-search-results">검색결과 일괄 추가(선택된 리스트에 추가)</button>
       <button id="clear-search-result">검색결과 초기화</button>
@@ -375,7 +377,8 @@
             <tr>
               <th>업체명</th>
               <th>주소</th>
-              <th style="display:none;">위도</th> <th style="display:none;">경도</th> </tr>
+              <th style="display:none;">위도</th> <th style="display:none;">경도</th>
+            </tr>
           </thead>
           <tbody></tbody>
         </table>
@@ -390,7 +393,8 @@
             <tr>
               <th>업체명</th>
               <th>주소</th>
-              <th style="display:none;">위도</th> <th style="display:none;">경도</th> </tr>
+              <th style="display:none;">위도</th> <th style="display:none;">경도</th>
+            </tr>
           </thead>
           <tbody></tbody>
         </table>
@@ -468,6 +472,9 @@
       const passwordCancel = document.getElementById('password-cancel');
       const passwordError = document.getElementById('password-error');
 
+      // ✨ API에서 데이터 가져오기 버튼 요소
+      const loadFromApiBtn = document.getElementById('load-from-api');
+
       // 올바른 비밀번호 설정
       const correctPassword = '123123'; // 원하는 비밀번호로 변경
 
@@ -512,7 +519,7 @@
 
           for (let i = 0; i < text.length; i++) {
               const charCode = text.charCodeAt(i);
-              
+
               // 1. 전체 한글 음절(가-힣)이 포함되어 있다면 초성으로만 구성된 것이 아님
               if (charCode >= 0xAC00 && charCode <= 0xD7A3) {
                   return false;
@@ -533,9 +540,8 @@
       }
 
 
-
       // 지도 초기화
-      const map = L.map('map', { 
+      const map = L.map('map', {
         fullscreenControl: true,
         minZoom: 9,
         maxZoom: 16
@@ -758,7 +764,7 @@
           } else {
             window.labelLinesGroup = L.layerGroup().addTo(map);
           }
-          
+
           if (polylineLayer) {
               map.removeLayer(polylineLayer);
               polylineLayer = null;
@@ -777,8 +783,8 @@
 
           for (const group of grouped) {
               const popupContent = group.map(item => `
-                <div class="nav-link" 
-                    data-name="${item.name}" 
+                <div class="nav-link"
+                    data-name="${item.name}"
                     data-address="${item.address || ''}"
                     style="cursor:pointer; color:#007bff; font-weight:bold;">
                   ${item.name}<br/>
@@ -787,7 +793,7 @@
               `).join('<hr>');
 
               const base = group[0];
-              const baseLatLng = L.latLng(base.lat, base.lng); 
+              const baseLatLng = L.latLng(base.lat, base.lng);
 
               const realMarker = L.marker(baseLatLng).addTo(markersGroup);
               realMarker.bindPopup(popupContent);
@@ -804,8 +810,8 @@
               });
 
               // 실제 마커의 픽셀 경계 계산 및 저장
-              const defaultMarkerIconSize = L.point(25, 41); 
-              const defaultMarkerIconAnchor = L.point(12, 41); 
+              const defaultMarkerIconSize = L.point(25, 41);
+              const defaultMarkerIconAnchor = L.point(12, 41);
               const realMarkerPixelPos = map.latLngToLayerPoint(baseLatLng);
               const realMarkerTopLeft = realMarkerPixelPos.subtract(defaultMarkerIconAnchor);
               realMarkerPixelBounds.push(L.bounds(realMarkerTopLeft, realMarkerTopLeft.add(defaultMarkerIconSize)));
@@ -816,11 +822,11 @@
               const icon = L.divIcon({
                 className: 'name-list-label',
                 html,
-                iconSize: null, 
+                iconSize: null,
                 iconAnchor: labelIconAnchor // 정의된 앵커 사용
               });
 
-              let pos = map.latLngToLayerPoint(baseLatLng).add([baseOffset, 0]); 
+              let pos = map.latLngToLayerPoint(baseLatLng).add([baseOffset, 0]);
               const labelMarker = L.marker(map.layerPointToLatLng(pos), {
                 icon,
                 interactive: true,
@@ -844,18 +850,18 @@
                   const checkElement = () => {
                       const el = labelMarker.getElement();
                       if (el) {
-                          markersWithPos.push({ 
-                              marker: labelMarker, 
-                              initialPos: pos.clone(), 
-                              pos, 
-                              width: el.offsetWidth, 
-                              height: el.offsetHeight, 
+                          markersWithPos.push({
+                              marker: labelMarker,
+                              initialPos: pos.clone(),
+                              pos,
+                              width: el.offsetWidth,
+                              height: el.offsetHeight,
                               originalLatLng: baseLatLng,
                               labelIconAnchor: labelIconAnchor
                           });
                           resolve();
                       } else {
-                          setTimeout(checkElement, 10); 
+                          setTimeout(checkElement, 10);
                       }
                   };
                   checkElement();
@@ -877,35 +883,35 @@
           let iteration = 0;
 
           while (overlapped && iteration < maxOverlapIterations) {
-              overlapped = false; 
+              overlapped = false;
               // ✨ 매 반복마다 라벨 처리 순서를 무작위로 섞음
               shuffleArray(markersWithPos);
-              
+
               for (let i = 0; i < markersWithPos.length; i++) {
                   const currentLabel = markersWithPos[i];
-                  
+
                   const currentLabelTopLeft = currentLabel.pos.subtract(currentLabel.labelIconAnchor);
                   const currentBounds = L.bounds(currentLabelTopLeft, currentLabelTopLeft.add([currentLabel.width, currentLabel.height]));
-                  
+
                   let hasOverlap = false;
 
                   // 다른 라벨들과의 겹침 확인
                   for (let j = 0; j < markersWithPos.length; j++) {
-                      if (i === j) continue; 
-                      
+                      if (i === j) continue;
+
                       const otherLabel = markersWithPos[j];
                       const otherLabelTopLeft = otherLabel.pos.subtract(otherLabel.labelIconAnchor);
                       const otherBounds = L.bounds(otherLabelTopLeft, otherLabelTopLeft.add([otherLabel.width, otherLabel.height]));
 
                       if (currentBounds.intersects(otherBounds)) {
                           hasOverlap = true;
-                          overlapped = true; 
-                          break; 
+                          overlapped = true;
+                          break;
                       }
                   }
 
                   // 실제 마커(obstacle)와의 겹침 확인
-                  if (!hasOverlap) { 
+                  if (!hasOverlap) {
                       for (let k = 0; k < realMarkerPixelBounds.length; k++) {
                           const realMarkerBounds = realMarkerPixelBounds[k];
                           if (currentBounds.intersects(realMarkerBounds)) {
@@ -921,20 +927,20 @@
                       const basePixelPos = map.latLngToLayerPoint(currentLabel.originalLatLng);
 
                       for (const dir of directions) {
-                          const proposedPos = basePixelPos.add(dir.multiplyBy(baseOffset + labelMoveStep * iteration)); 
-                          
+                          const proposedPos = basePixelPos.add(dir.multiplyBy(baseOffset + labelMoveStep * iteration));
+
                           const proposedLabelTopLeft = proposedPos.subtract(currentLabel.labelIconAnchor);
                           const proposedBounds = L.bounds(proposedLabelTopLeft, proposedLabelTopLeft.add([currentLabel.width, currentLabel.height]));
-                          
+
                           let conflict = false;
 
                           // 제안된 위치가 다른 라벨과 겹치는지 확인
                           for (let k = 0; k < markersWithPos.length; k++) {
-                              if (i === k) continue; 
+                              if (i === k) continue;
                               const existingLabel = markersWithPos[k];
                               const existingLabelTopLeft = existingLabel.pos.subtract(existingLabel.labelIconAnchor);
                               const existingBounds = L.bounds(existingLabelTopLeft, existingLabelTopLeft.add([existingLabel.width, existingLabel.height]));
-                              
+
                               if (proposedBounds.intersects(existingBounds)) {
                                   conflict = true;
                                   break;
@@ -942,7 +948,7 @@
                           }
 
                           // 제안된 위치가 실제 마커(obstacle)와 겹치는지 확인
-                          if (!conflict) { 
+                          if (!conflict) {
                               for (let k = 0; k < realMarkerPixelBounds.length; k++) {
                                   const realMarkerBounds = realMarkerPixelBounds[k];
                                   if (proposedBounds.intersects(realMarkerBounds)) {
@@ -955,13 +961,13 @@
                           if (!conflict) {
                               currentLabel.pos = proposedPos;
                               foundSpot = true;
-                              break; 
+                              break;
                           }
                       }
                   }
               }
               iteration++;
-              await new Promise(r => setTimeout(r, 0)); 
+              await new Promise(r => setTimeout(r, 0));
           }
 
           window.labelLinesGroup.clearLayers();
@@ -971,15 +977,15 @@
               const labelCenterPixel = labelTopLeftPixel.add([width / 2, height / 2]);
               const labelCenterLatLng = map.layerPointToLatLng(labelCenterPixel);
 
-              const line = L.polyline([originalLatLng, labelCenterLatLng], { 
+              const line = L.polyline([originalLatLng, labelCenterLatLng], {
                   color: 'blue',
                   weight: 3,
-                  pane: 'overlayPane' 
+                  pane: 'overlayPane'
               });
               window.labelLinesGroup.addLayer(line);
-              
-              const labelLatLng = map.layerPointToLatLng(pos); 
-              marker.setLatLng(labelLatLng); 
+
+              const labelLatLng = map.layerPointToLatLng(pos);
+              marker.setLatLng(labelLatLng);
           });
       }
 
@@ -1002,7 +1008,7 @@
           const mapRect = mapContainer.getBoundingClientRect(); // 지도의 현재 크기 및 위치
           const mapWidth = mapRect.width;
           const mapHeight = mapRect.height;
-          
+
           // 지도의 중심점의 픽셀 좌표
           const centerPoint = map.latLngToContainerPoint(map.getCenter());
 
@@ -1010,15 +1016,15 @@
               console.error("Offscreen indicators container not found.");
               return;
           }
-          
+
           // 현재 화면에 보이는 마커들의 ID를 추적하여 필요 없는 지표 제거에 사용
-          const visibleMarkerIds = new Set(); 
+          const visibleMarkerIds = new Set();
 
           selectedData.forEach(marker => {
               const markerLatLng = L.latLng(marker.lat, marker.lng);
               // 마커의 고유 ID (이름, 위도, 경도 조합)
-              const markerId = marker.name + '_' + marker.lat + '_' + marker.lng; 
-              
+              const markerId = marker.name + '_' + marker.lat + '_' + marker.lng;
+
               // 마커가 현재 지도 화면 밖에 있는지 확인
               if (!mapBounds.contains(markerLatLng)) {
                   visibleMarkerIds.add(markerId); // 지표가 필요한 마커로 표시
@@ -1048,9 +1054,9 @@
 
                   // 벡터의 각도 (라디안) 계산
                   const angle = Math.atan2(dy, dx);
-                  
+
                   // CSS rotation (▶ points right by default)
-                  const rotationDegrees = angle * (180 / Math.PI); 
+                  const rotationDegrees = angle * (180 / Math.PI);
 
                   let intersectionX, intersectionY;
                   let minT = Infinity;
@@ -1058,10 +1064,10 @@
                   // Helper function to calculate t and validate it for a given boundary
                   const calculateT = (numerator, denominator) => {
                       // 0으로 나누는 경우 방지 (평행한 경우)
-                      if (denominator === 0) return Infinity; 
+                      if (denominator === 0) return Infinity;
                       const t_val = numerator / denominator;
                       // 중심에서 멀어지는 방향의 t 값만 유효 (음수는 뒤쪽)
-                      if (t_val >= 0) return t_val; 
+                      if (t_val >= 0) return t_val;
                       return Infinity;
                   };
 
@@ -1129,7 +1135,7 @@
                       intersectionX = Math.max(halfSize, Math.min(intersectionX, mapWidth - halfSize));
                       intersectionY = Math.max(halfSize, Math.min(intersectionY, mapHeight - halfSize));
                   }
-                  
+
                   // 지표 스타일 적용 및 내용 설정
                   indicator.style.left = `${intersectionX}px`;
                   indicator.style.top = `${intersectionY}px`;
@@ -1138,7 +1144,7 @@
                   // 화살표와 마커 이름 함께 표시
                   // ✨ 화살표 아이콘을 꼬리 달린 화살표로 변경 (➔)
                   indicator.innerHTML = `<div class="arrow-icon">➔</div><div class="marker-name-text">${marker.name}</div>`;
-                  
+
                   // ✨ 화살표 아이콘만 회전
                   const arrowIcon = indicator.querySelector('.arrow-icon');
                   if (arrowIcon) {
@@ -1505,6 +1511,47 @@
         renderSelected();
         saveSelectedToLocalStorage();
       });
+
+      // ✨ API에서 데이터를 가져오는 함수 추가
+      async function fetchCompaniesFromAPI() {
+          const apiURL = 'http://jamdolyung90.dothome.co.kr/api/companies.php'; // 실제 API 엔드포인트 주소
+          loadingIndicator.textContent = 'API에서 데이터 로딩 중...';
+          loadingIndicator.style.display = 'block';
+
+          try {
+              const response = await fetch(apiURL);
+              if (!response.ok) {
+                  throw new Error(`HTTP error! status: ${response.status}`);
+              }
+              const result = await response.json();
+
+              if (result.status === 'success') {
+                  // API에서 가져온 데이터로 fullData를 업데이트합니다.
+                  // API 응답 데이터는 DB에서 가져온 그대로이므로, lat/lng를 float으로 변환해줍니다.
+                  fullData = result.data.map(item => ({
+                      name: item.name,
+                      address: item.address,
+                      lat: parseFloat(item.latitude),
+                      lng: parseFloat(item.longitude)
+                  }));
+                  renderTable(fullData);
+                  saveFullDataToLocalStorage(); // 로컬 스토리지에 저장
+                  alert(`API에서 ${fullData.length}건의 업체 목록을 성공적으로 불러왔습니다.`);
+              } else {
+                  alert(`API 오류: ${result.message}`);
+                  console.error('API Error:', result.message);
+              }
+          } catch (error) {
+              alert('API에서 데이터를 가져오는 중 오류가 발생했습니다: ' + error.message);
+              console.error('Fetch Error:', error);
+          } finally {
+              loadingIndicator.style.display = 'none';
+          }
+      }
+
+      // ✨ "API에서 업체 목록 가져오기" 버튼 이벤트 리스너 추가
+      loadFromApiBtn.addEventListener('click', fetchCompaniesFromAPI);
+
 
       window.addEventListener('DOMContentLoaded', () => {
         // 로컬스토리지에서 선택된 리스트 및 전체 리스트 불러오기
