@@ -8,14 +8,30 @@
         body { font-family: 'Malgun Gothic', sans-serif; padding: 10px; }
         .wrapper { display: flex; gap: 20px; }
         .panel { width: 350px; flex-shrink: 0; }
-        #map { width: 1122px; height: 794px; border: 2px solid #333; }
+        #map { width: 1122px; height: 794px; border: 2px solid #333; position: relative; }
 
         .box { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; border-radius: 5px; }
         #searchList, #selectedList { height: 200px; overflow-y: auto; border: 1px solid #eee; margin-top: 5px; padding: 5px; }
         button { cursor: pointer; background: #007bff; color: white; border: none; padding: 5px 10px; border-radius: 3px; }
         button.del { background: #dc3545; }
 
-        .map-label {
+        #measure-box {
+            position: fixed;
+            top: -9999px;
+            left: -9999px;
+            visibility: hidden;
+        }
+
+        #label-canvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .lbl {
+            position: absolute;
             background: rgba(255,255,255,0.93);
             border: 1px solid #444;
             border-radius: 3px;
@@ -23,20 +39,27 @@
             font-size: 11px;
             font-family: 'Malgun Gothic', sans-serif;
             white-space: nowrap;
-            pointer-events: none;
             box-shadow: 0 1px 4px rgba(0,0,0,0.25);
             line-height: 1.5;
-            display: inline-block;
+        }
+
+        .lbl-line {
+            position: absolute;
+            border-left: 1px dashed #888;
+            pointer-events: none;
+            transform-origin: top left;
         }
 
         @media print {
             body * { visibility: hidden; }
-            #map, #map * { visibility: visible; }
+            #map, #map *, #label-canvas, #label-canvas * { visibility: visible; }
             #map { position: absolute; left: 0; top: 0; width: 100%; border: none; }
         }
     </style>
 </head>
 <body>
+
+<div id="measure-box"></div>
 
 <div class="wrapper">
     <div class="panel">
@@ -61,7 +84,11 @@
             <button onclick="window.print()" style="margin-top:10px; background:#28a745; width:100%;">A4 인쇄하기</button>
         </div>
     </div>
-    <div id="map"></div>
+
+    <div style="position:relative;">
+        <div id="map"></div>
+        <div id="label-canvas"></div>
+    </div>
 </div>
 
 <script>
@@ -69,6 +96,9 @@ let map, geocoder;
 let allData = [], selectedData = [];
 let placed = [];
 let reposTimer = null;
+
+const MARKER_H = 34;
+const PAD      = 4;
 
 function initMap() {
     const key = document.getElementById('apiKeyInput').value.trim();
@@ -144,14 +174,25 @@ function renderSelectedList() {
     });
 }
 
+function measureLabel(text) {
+    const mb = document.getElementById('measure-box');
+    const el = document.createElement('div');
+    el.className = 'lbl';
+    el.style.position = 'static';
+    el.textContent = text;
+    mb.appendChild(el);
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    mb.removeChild(el);
+    return { w, h };
+}
+
 function updateMap() {
     if (!map) { alert("먼저 API 키로 지도를 활성화하세요."); return; }
 
-    placed.forEach(p => {
-        p.marker.setMap(null);
-        p.overlay.setMap(null);
-    });
+    placed.forEach(p => p.marker.setMap(null));
     placed = [];
+    clearCanvas();
 
     if (selectedData.length === 0) return;
 
@@ -162,103 +203,127 @@ function updateMap() {
         geocoder.addressSearch(d['주소'], (result, status) => {
             if (status === kakao.maps.services.Status.OK) {
                 const pos = new kakao.maps.LatLng(result[0].y, result[0].x);
-
                 const marker = new kakao.maps.Marker({ map, position: pos });
-
-                const labelDiv = document.createElement('div');
-                labelDiv.className = 'map-label';
-                labelDiv.textContent = d['거래처명'];
-
-                const overlay = new kakao.maps.CustomOverlay({
-                    map,
-                    position: pos,
-                    content: labelDiv,
-                    xAnchor: 0.5,
-                    yAnchor: 1.6,
-                    zIndex: 5
-                });
-
-                placed.push({ marker, overlay, labelDiv, pos });
+                const { w, h } = measureLabel(d['거래처명']);
+                placed.push({ marker, pos, name: d['거래처명'], lw: w, lh: h });
                 bounds.extend(pos);
             }
-
             pending--;
             if (pending === 0) {
                 if (!bounds.isEmpty()) map.setBounds(bounds);
-                setTimeout(repositionLabels, 500);
+                setTimeout(repositionLabels, 600);
             }
         });
     });
 }
 
+function clearCanvas() {
+    document.getElementById('label-canvas').innerHTML = '';
+}
+
+function toContainerPx(latLng) {
+    const proj = map.getProjection();
+    const mapPt    = proj.pointFromCoords(latLng);
+    const centerPt = proj.pointFromCoords(map.getCenter());
+    const mapEl = document.getElementById('map');
+    const cx = mapEl.offsetWidth  / 2;
+    const cy = mapEl.offsetHeight / 2;
+    return {
+        x: cx + (mapPt.x - centerPt.x),
+        y: cy + (mapPt.y - centerPt.y),
+    };
+}
+
 function scheduleRepos() {
     clearTimeout(reposTimer);
-    reposTimer = setTimeout(repositionLabels, 150);
+    reposTimer = setTimeout(repositionLabels, 200);
 }
 
 function repositionLabels() {
     if (!map || placed.length === 0) return;
-
-    const proj = map.getProjection();
-
-    placed.forEach(p => {
-        p.labelDiv.style.marginLeft = '0px';
-        p.labelDiv.style.marginTop  = '0px';
-    });
+    clearCanvas();
 
     const items = placed.map(p => {
-        const pt   = proj.pointFromCoords(p.pos);
-        const rect = p.labelDiv.getBoundingClientRect();
-        const w    = rect.width  || 70;
-        const h    = rect.height || 18;
-        return { p, px: pt.x, py: pt.y, w, h, ox: 0, oy: 0 };
+        const { x, y } = toContainerPx(p.pos);
+        return {
+            name: p.name,
+            mx: x,
+            my: y,
+            lw: p.lw,
+            lh: p.lh,
+            lx: x - p.lw / 2,
+            ly: y - MARKER_H - p.lh - 2,
+        };
     });
 
-    function getBox(it) {
-        const PAD = 2;
-        return {
-            l: it.px - it.w / 2 + it.ox - PAD,
-            r: it.px + it.w / 2 + it.ox + PAD,
-            t: it.py - it.h * 1.6 + it.oy - PAD,
-            b: it.py - it.h * 0.6 + it.oy + PAD,
-        };
-    }
-
-    function intersects(a, b) {
-        const ba = getBox(a), bb = getBox(b);
-        return !(ba.r < bb.l || bb.r < ba.l || ba.b < bb.t || bb.b < ba.t);
-    }
-
-    function spiralOffsets(maxR, step) {
-        const offsets = [[0, 0]];
+    function spiral(maxR, step) {
+        const pts = [[0, 0]];
         for (let r = step; r <= maxR; r += step) {
-            const count = Math.max(8, Math.round(2 * Math.PI * r / step));
-            for (let i = 0; i < count; i++) {
-                const angle = (2 * Math.PI * i) / count;
-                offsets.push([Math.round(Math.cos(angle) * r), Math.round(Math.sin(angle) * r)]);
+            const n = Math.max(8, Math.round(2 * Math.PI * r / step));
+            for (let i = 0; i < n; i++) {
+                const a = (2 * Math.PI * i) / n;
+                pts.push([Math.cos(a) * r, Math.sin(a) * r]);
             }
         }
-        return offsets;
+        return pts;
+    }
+    const OFFSETS = spiral(150, 6);
+
+    function overlaps(a, b) {
+        return !(a.lx + a.lw + PAD < b.lx ||
+                 b.lx + b.lw + PAD < a.lx ||
+                 a.ly + a.lh + PAD < b.ly ||
+                 b.ly + b.lh + PAD < a.ly);
     }
 
-    const OFFSETS = spiralOffsets(120, 8);
     const settled = [];
 
     items.forEach(cur => {
+        const baseLx = cur.mx - cur.lw / 2;
+        const baseLy = cur.my - MARKER_H - cur.lh - 2;
         let found = false;
+
         for (const [ox, oy] of OFFSETS) {
-            cur.ox = ox;
-            cur.oy = oy;
-            if (settled.every(s => !intersects(cur, s))) {
+            cur.lx = baseLx + ox;
+            cur.ly = baseLy + oy;
+            if (settled.every(s => !overlaps(cur, s))) {
                 found = true;
                 break;
             }
         }
-        if (!found) { cur.ox = 0; cur.oy = 0; }
+        if (!found) { cur.lx = baseLx; cur.ly = baseLy; }
         settled.push(cur);
+    });
 
-        cur.p.labelDiv.style.marginLeft = cur.ox + 'px';
-        cur.p.labelDiv.style.marginTop  = cur.oy + 'px';
+    const canvas = document.getElementById('label-canvas');
+
+    settled.forEach(it => {
+        const markerCx = it.mx;
+        const markerCy = it.my - MARKER_H / 2;
+        const labelCx  = it.lx + it.lw / 2;
+        const labelCy  = it.ly + it.lh / 2;
+
+        const dx = labelCx - markerCx;
+        const dy = labelCy - markerCy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist > it.lw / 2 + 6) {
+            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            const line = document.createElement('div');
+            line.className = 'lbl-line';
+            line.style.left   = markerCx + 'px';
+            line.style.top    = markerCy + 'px';
+            line.style.height = dist + 'px';
+            line.style.transform = `rotate(${angle + 90}deg)`;
+            canvas.appendChild(line);
+        }
+
+        const el = document.createElement('div');
+        el.className = 'lbl';
+        el.style.left = it.lx + 'px';
+        el.style.top  = it.ly + 'px';
+        el.textContent = it.name;
+        canvas.appendChild(el);
     });
 }
 </script>
