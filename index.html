@@ -7,15 +7,28 @@
     <style>
         body { font-family: 'Malgun Gothic', sans-serif; padding: 10px; }
         .wrapper { display: flex; gap: 20px; }
-        .panel { width: 350px; }
-        #map { width: 1122px; height: 794px; border: 2px solid #333; } /* A4 가로 비율 */
-        
+        .panel { width: 350px; flex-shrink: 0; }
+        #map { width: 1122px; height: 794px; border: 2px solid #333; }
+
         .box { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; border-radius: 5px; }
         #searchList, #selectedList { height: 200px; overflow-y: auto; border: 1px solid #eee; margin-top: 5px; padding: 5px; }
         button { cursor: pointer; background: #007bff; color: white; border: none; padding: 5px 10px; border-radius: 3px; }
         button.del { background: #dc3545; }
 
-        /* 인쇄 설정 */
+        .map-label {
+            background: rgba(255,255,255,0.93);
+            border: 1px solid #444;
+            border-radius: 3px;
+            padding: 2px 6px;
+            font-size: 11px;
+            font-family: 'Malgun Gothic', sans-serif;
+            white-space: nowrap;
+            pointer-events: none;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+            line-height: 1.5;
+            display: inline-block;
+        }
+
         @media print {
             body * { visibility: hidden; }
             #map, #map * { visibility: visible; }
@@ -31,7 +44,7 @@
             <h3>1. API 키 입력</h3>
             <input type="text" id="apiKeyInput" placeholder="카카오 JS 키 입력" style="width:200px">
             <button onclick="initMap()">활성화</button>
-            <p id="keyStatus" style="color: red; font-weight: bold; margin-top: 5px;">(미활성화)</p>
+            <p id="keyStatus" style="color:red; font-weight:bold; margin-top:5px;">(미활성화)</p>
         </div>
         <div class="box">
             <h3>2. 파일 업로드</h3>
@@ -52,99 +65,202 @@
 </div>
 
 <script>
-    let map, geocoder, allData = [], selectedData = [], markers = [];
+let map, geocoder;
+let allData = [], selectedData = [];
+let placed = [];
+let reposTimer = null;
 
-    function initMap() {
-        const key = document.getElementById('apiKeyInput').value;
-        if(!key) { alert("API 키를 먼저 입력해주세요."); return; }
-        
-        const script = document.createElement('script');
-        script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${key}&libraries=services&autoload=false`;
-        script.onload = () => {
-            kakao.maps.load(() => {
-                map = new kakao.maps.Map(document.getElementById('map'), {center: new kakao.maps.LatLng(37.5668, 126.9786), level: 7});
-                geocoder = new kakao.maps.services.Geocoder();
-                
-                // 상태 표시 업데이트
-                const status = document.getElementById('keyStatus');
-                status.innerText = "(활성화 완료)";
-                status.style.color = "green";
-                alert("지도 활성화 완료!");
+function initMap() {
+    const key = document.getElementById('apiKeyInput').value.trim();
+    if (!key) { alert("API 키를 먼저 입력해주세요."); return; }
+
+    const script = document.createElement('script');
+    script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${key}&libraries=services&autoload=false`;
+    script.onload = () => {
+        kakao.maps.load(() => {
+            map = new kakao.maps.Map(document.getElementById('map'), {
+                center: new kakao.maps.LatLng(37.2636, 127.0286),
+                level: 9
             });
-        };
-        document.head.appendChild(script);
-    }
+            geocoder = new kakao.maps.services.Geocoder();
+            kakao.maps.event.addListener(map, 'idle', scheduleRepos);
 
-    document.getElementById('excelFile').onchange = (e) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const wb = XLSX.read(e.target.result, {type: 'array'});
-            allData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-            alert("파일 로드 완료! 검색을 시작하세요.");
-        };
-        reader.readAsArrayBuffer(e.target.files[0]);
-    };
-
-    document.getElementById('searchInput').oninput = (e) => {
-        const val = e.target.value;
-        const list = document.getElementById('searchList');
-        list.innerHTML = '';
-        if(!val) return;
-        
-        allData.filter(d => d['거래처명'] && d['거래처명'].includes(val)).forEach(d => {
-            const div = document.createElement('div');
-            div.style.marginBottom = "5px";
-            // JSON 문자열 처리 수정
-            const dataStr = JSON.stringify(d).replace(/"/g, '&quot;');
-            div.innerHTML = `<button onclick="addToSelection(${dataStr})">+</button> ${d['거래처명']}`;
-            list.appendChild(div);
+            document.getElementById('keyStatus').innerText = "(활성화 완료)";
+            document.getElementById('keyStatus').style.color = "green";
         });
     };
+    document.head.appendChild(script);
+}
 
-    function addToSelection(data) {
-        if (!selectedData.find(d => d['거래처명'] === data['거래처명'])) {
-            selectedData.push(data);
-            renderSelectedList();
-            updateMap();
-        }
-    }
+document.getElementById('excelFile').onchange = (e) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+        const wb = XLSX.read(ev.target.result, { type: 'array' });
+        allData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+        alert(`파일 로드 완료! 총 ${allData.length}개 거래처`);
+    };
+    reader.readAsArrayBuffer(e.target.files[0]);
+};
 
-    function renderSelectedList() {
-        const list = document.getElementById('selectedList');
-        list.innerHTML = '';
-        selectedData.forEach(d => {
+document.getElementById('searchInput').oninput = (e) => {
+    const val = e.target.value;
+    const list = document.getElementById('searchList');
+    list.innerHTML = '';
+    if (!val) return;
+    allData
+        .filter(d => d['거래처명'] && d['거래처명'].includes(val))
+        .forEach(d => {
+            const idx = allData.indexOf(d);
             const div = document.createElement('div');
             div.style.marginBottom = "5px";
-            div.innerHTML = `<button class="del" onclick="removeFromSelection('${d['거래처명']}')">X</button> ${d['거래처명']}`;
+            div.innerHTML = `<button onclick="addItem(${idx})">+</button> ${d['거래처명']}`;
             list.appendChild(div);
         });
-    }
+};
 
-    function removeFromSelection(name) {
-        selectedData = selectedData.filter(d => d['거래처명'] !== name);
+function addItem(idx) {
+    const d = allData[idx];
+    if (!selectedData.find(x => x['거래처명'] === d['거래처명'])) {
+        selectedData.push(d);
         renderSelectedList();
         updateMap();
     }
+}
 
-    function updateMap() {
-        markers.forEach(m => m.setMap(null));
-        markers = [];
-        const bounds = new kakao.maps.LatLngBounds();
+function removeItem(idx) {
+    selectedData.splice(idx, 1);
+    renderSelectedList();
+    updateMap();
+}
 
-        selectedData.forEach(d => {
-            geocoder.addressSearch(d['주소'], (result, status) => {
-                if (status === kakao.maps.services.Status.OK) {
-                    const pos = new kakao.maps.LatLng(result[0].y, result[0].x);
-                    const marker = new kakao.maps.Marker({ map: map, position: pos });
-                    const label = new kakao.maps.InfoWindow({ content: `<div style="padding:5px; font-size:12px;">${d['거래처명']}</div>` });
-                    label.open(map, marker);
-                    markers.push(marker);
-                    bounds.extend(pos);
-                    map.setBounds(bounds);
-                }
-            });
+function renderSelectedList() {
+    const list = document.getElementById('selectedList');
+    list.innerHTML = '';
+    selectedData.forEach((d, i) => {
+        const div = document.createElement('div');
+        div.style.marginBottom = "5px";
+        div.innerHTML = `<button class="del" onclick="removeItem(${i})">X</button> ${d['거래처명']}`;
+        list.appendChild(div);
+    });
+}
+
+function updateMap() {
+    if (!map) { alert("먼저 API 키로 지도를 활성화하세요."); return; }
+
+    placed.forEach(p => {
+        p.marker.setMap(null);
+        p.overlay.setMap(null);
+    });
+    placed = [];
+
+    if (selectedData.length === 0) return;
+
+    const bounds = new kakao.maps.LatLngBounds();
+    let pending = selectedData.length;
+
+    selectedData.forEach(d => {
+        geocoder.addressSearch(d['주소'], (result, status) => {
+            if (status === kakao.maps.services.Status.OK) {
+                const pos = new kakao.maps.LatLng(result[0].y, result[0].x);
+
+                const marker = new kakao.maps.Marker({ map, position: pos });
+
+                const labelDiv = document.createElement('div');
+                labelDiv.className = 'map-label';
+                labelDiv.textContent = d['거래처명'];
+
+                const overlay = new kakao.maps.CustomOverlay({
+                    map,
+                    position: pos,
+                    content: labelDiv,
+                    xAnchor: 0.5,
+                    yAnchor: 1.6,
+                    zIndex: 5
+                });
+
+                placed.push({ marker, overlay, labelDiv, pos });
+                bounds.extend(pos);
+            }
+
+            pending--;
+            if (pending === 0) {
+                if (!bounds.isEmpty()) map.setBounds(bounds);
+                setTimeout(repositionLabels, 500);
+            }
         });
+    });
+}
+
+function scheduleRepos() {
+    clearTimeout(reposTimer);
+    reposTimer = setTimeout(repositionLabels, 150);
+}
+
+function repositionLabels() {
+    if (!map || placed.length === 0) return;
+
+    const proj = map.getProjection();
+
+    placed.forEach(p => {
+        p.labelDiv.style.marginLeft = '0px';
+        p.labelDiv.style.marginTop  = '0px';
+    });
+
+    const items = placed.map(p => {
+        const pt   = proj.pointFromCoords(p.pos);
+        const rect = p.labelDiv.getBoundingClientRect();
+        const w    = rect.width  || 70;
+        const h    = rect.height || 18;
+        return { p, px: pt.x, py: pt.y, w, h, ox: 0, oy: 0 };
+    });
+
+    function getBox(it) {
+        const PAD = 2;
+        return {
+            l: it.px - it.w / 2 + it.ox - PAD,
+            r: it.px + it.w / 2 + it.ox + PAD,
+            t: it.py - it.h * 1.6 + it.oy - PAD,
+            b: it.py - it.h * 0.6 + it.oy + PAD,
+        };
     }
+
+    function intersects(a, b) {
+        const ba = getBox(a), bb = getBox(b);
+        return !(ba.r < bb.l || bb.r < ba.l || ba.b < bb.t || bb.b < ba.t);
+    }
+
+    function spiralOffsets(maxR, step) {
+        const offsets = [[0, 0]];
+        for (let r = step; r <= maxR; r += step) {
+            const count = Math.max(8, Math.round(2 * Math.PI * r / step));
+            for (let i = 0; i < count; i++) {
+                const angle = (2 * Math.PI * i) / count;
+                offsets.push([Math.round(Math.cos(angle) * r), Math.round(Math.sin(angle) * r)]);
+            }
+        }
+        return offsets;
+    }
+
+    const OFFSETS = spiralOffsets(120, 8);
+    const settled = [];
+
+    items.forEach(cur => {
+        let found = false;
+        for (const [ox, oy] of OFFSETS) {
+            cur.ox = ox;
+            cur.oy = oy;
+            if (settled.every(s => !intersects(cur, s))) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) { cur.ox = 0; cur.oy = 0; }
+        settled.push(cur);
+
+        cur.p.labelDiv.style.marginLeft = cur.ox + 'px';
+        cur.p.labelDiv.style.marginTop  = cur.oy + 'px';
+    });
+}
 </script>
 </body>
 </html>
