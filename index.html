@@ -5,22 +5,19 @@
     <title>거래처 관리 및 출력 지도</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
-        body { font-family: 'Malgun Gothic', sans-serif; padding: 10px; }
+        body { font-family: 'Malgun Gothic', sans-serif; padding: 10px; background: #f5f5f5; }
         .wrapper { display: flex; gap: 20px; }
         .panel { width: 350px; flex-shrink: 0; }
-        #map { width: 1122px; height: 794px; border: 2px solid #333; position: relative; }
+        #map { width: 1122px; height: 794px; border: 2px solid #333; }
 
-        .box { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; border-radius: 5px; }
-        #searchList, #selectedList { height: 200px; overflow-y: auto; border: 1px solid #eee; margin-top: 5px; padding: 5px; }
-        button { cursor: pointer; background: #007bff; color: white; border: none; padding: 5px 10px; border-radius: 3px; }
+        .box { background: #fff; border: 1px solid #ddd; padding: 12px; margin-bottom: 10px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+        .box h3 { font-size: 13px; color: #333; margin-bottom: 8px; }
+        #searchList, #selectedList { height: 200px; overflow-y: auto; border: 1px solid #eee; margin-top: 5px; padding: 5px; border-radius: 4px; }
+        input[type=text] { border: 1px solid #ccc; border-radius: 4px; padding: 5px 8px; font-family: inherit; font-size: 13px; }
+        button { cursor: pointer; background: #007bff; color: white; border: none; padding: 5px 10px; border-radius: 4px; font-family: inherit; font-size: 12px; }
         button.del { background: #dc3545; }
 
-        #measure-box {
-            position: fixed;
-            top: -9999px;
-            left: -9999px;
-            visibility: hidden;
-        }
+        #measure-box { position: fixed; top: -9999px; left: -9999px; visibility: hidden; }
 
         #label-canvas {
             position: absolute;
@@ -30,30 +27,27 @@
             z-index: 10;
         }
 
+        /* 업체명 라벨 */
         .lbl {
             position: absolute;
-            background: rgba(255,255,255,0.93);
-            border: 1px solid #444;
-            border-radius: 3px;
-            padding: 2px 6px;
+            background: #1a1a2e;
+            color: #ffffff;
+            border-radius: 4px;
+            padding: 3px 8px;
             font-size: 11px;
+            font-weight: 600;
             font-family: 'Malgun Gothic', sans-serif;
             white-space: nowrap;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.25);
-            line-height: 1.5;
-        }
-
-        .lbl-line {
-            position: absolute;
-            border-left: 1px dashed #888;
-            pointer-events: none;
-            transform-origin: top left;
+            letter-spacing: 0.02em;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+            line-height: 1.6;
         }
 
         @media print {
             body * { visibility: hidden; }
-            #map, #map *, #label-canvas, #label-canvas * { visibility: visible; }
-            #map { position: absolute; left: 0; top: 0; width: 100%; border: none; }
+            #map-wrap, #map-wrap * { visibility: visible; }
+            #map-wrap { position: absolute; left: 0; top: 0; }
+            #map { border: none; }
         }
     </style>
 </head>
@@ -64,29 +58,30 @@
 <div class="wrapper">
     <div class="panel">
         <div class="box">
-            <h3>1. API 키 입력</h3>
-            <input type="text" id="apiKeyInput" placeholder="카카오 JS 키 입력" style="width:200px">
+            <h3>① API 키 입력</h3>
+            <input type="text" id="apiKeyInput" placeholder="카카오 JS 키" style="width:180px">
             <button onclick="initMap()">활성화</button>
-            <p id="keyStatus" style="color:red; font-weight:bold; margin-top:5px;">(미활성화)</p>
+            <p id="keyStatus" style="color:red; font-size:12px; margin-top:6px;">(미활성화)</p>
         </div>
         <div class="box">
-            <h3>2. 파일 업로드</h3>
+            <h3>② 파일 업로드</h3>
             <input type="file" id="excelFile" accept=".xlsx,.xls">
         </div>
         <div class="box">
-            <h3>3. 검색 및 선택</h3>
-            <input type="text" id="searchInput" placeholder="거래처명 검색">
+            <h3>③ 거래처 검색</h3>
+            <input type="text" id="searchInput" placeholder="업체명 검색..." style="width:100%">
             <div id="searchList"></div>
         </div>
         <div class="box">
-            <h3>4. 표시할 리스트</h3>
+            <h3>④ 표시 목록</h3>
             <div id="selectedList"></div>
-            <button onclick="window.print()" style="margin-top:10px; background:#28a745; width:100%;">A4 인쇄하기</button>
+            <button onclick="window.print()" style="margin-top:10px; background:#28a745; width:100%; padding:8px;">🖨 A4 인쇄</button>
         </div>
     </div>
 
-    <div style="position:relative;">
+    <div id="map-wrap" style="position:relative; flex-shrink:0;">
         <div id="map"></div>
+        <canvas id="line-canvas" style="position:absolute;top:0;left:0;pointer-events:none;z-index:9;"></canvas>
         <div id="label-canvas"></div>
     </div>
 </div>
@@ -97,12 +92,20 @@ let allData = [], selectedData = [];
 let placed = [];
 let reposTimer = null;
 
-const MARKER_H = 34;
-const PAD      = 4;
+const MAP_W    = 1122;
+const MAP_H    = 794;
+const MARKER_R = 6;   // 커스텀 마커 반지름
+const PAD      = 5;
 
+// ── 지도 초기화 ───────────────────────────────────────
 function initMap() {
     const key = document.getElementById('apiKeyInput').value.trim();
-    if (!key) { alert("API 키를 먼저 입력해주세요."); return; }
+    if (!key) { alert("API 키를 입력하세요."); return; }
+
+    // canvas 크기 설정
+    const lc = document.getElementById('line-canvas');
+    lc.width  = MAP_W;
+    lc.height = MAP_H;
 
     const script = document.createElement('script');
     script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${key}&libraries=services&autoload=false`;
@@ -115,23 +118,25 @@ function initMap() {
             geocoder = new kakao.maps.services.Geocoder();
             kakao.maps.event.addListener(map, 'idle', scheduleRepos);
 
-            document.getElementById('keyStatus').innerText = "(활성화 완료)";
+            document.getElementById('keyStatus').innerText = "✅ 활성화 완료";
             document.getElementById('keyStatus').style.color = "green";
         });
     };
     document.head.appendChild(script);
 }
 
+// ── 파일 업로드 ──────────────────────────────────────
 document.getElementById('excelFile').onchange = (e) => {
     const reader = new FileReader();
     reader.onload = (ev) => {
         const wb = XLSX.read(ev.target.result, { type: 'array' });
         allData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-        alert(`파일 로드 완료! 총 ${allData.length}개 거래처`);
+        alert(`✅ 로드 완료 — 총 ${allData.length}개 거래처`);
     };
     reader.readAsArrayBuffer(e.target.files[0]);
 };
 
+// ── 검색 ─────────────────────────────────────────────
 document.getElementById('searchInput').oninput = (e) => {
     const val = e.target.value;
     const list = document.getElementById('searchList');
@@ -142,8 +147,8 @@ document.getElementById('searchInput').oninput = (e) => {
         .forEach(d => {
             const idx = allData.indexOf(d);
             const div = document.createElement('div');
-            div.style.marginBottom = "5px";
-            div.innerHTML = `<button onclick="addItem(${idx})">+</button> ${d['거래처명']}`;
+            div.style.cssText = "margin-bottom:5px; font-size:12px;";
+            div.innerHTML = `<button onclick="addItem(${idx})" style="padding:2px 7px;font-size:11px;">+</button> ${d['거래처명']}`;
             list.appendChild(div);
         });
 };
@@ -156,24 +161,23 @@ function addItem(idx) {
         updateMap();
     }
 }
-
 function removeItem(idx) {
     selectedData.splice(idx, 1);
     renderSelectedList();
     updateMap();
 }
-
 function renderSelectedList() {
     const list = document.getElementById('selectedList');
     list.innerHTML = '';
     selectedData.forEach((d, i) => {
         const div = document.createElement('div');
-        div.style.marginBottom = "5px";
-        div.innerHTML = `<button class="del" onclick="removeItem(${i})">X</button> ${d['거래처명']}`;
+        div.style.cssText = "margin-bottom:5px; font-size:12px;";
+        div.innerHTML = `<button class="del" onclick="removeItem(${i})" style="padding:2px 6px;font-size:11px;">✕</button> ${d['거래처명']}`;
         list.appendChild(div);
     });
 }
 
+// ── 라벨 크기 측정 ───────────────────────────────────
 function measureLabel(text) {
     const mb = document.getElementById('measure-box');
     const el = document.createElement('div');
@@ -187,14 +191,40 @@ function measureLabel(text) {
     return { w, h };
 }
 
+// ── 커스텀 마커 (작은 원) ────────────────────────────
+function makeMarkerImage() {
+    const size = (MARKER_R * 2 + 4);
+    const cvs  = document.createElement('canvas');
+    cvs.width = cvs.height = size;
+    const ctx = cvs.getContext('2d');
+    // 외곽 흰 테두리
+    ctx.beginPath();
+    ctx.arc(size/2, size/2, MARKER_R + 1, 0, Math.PI*2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    // 내부 채우기
+    ctx.beginPath();
+    ctx.arc(size/2, size/2, MARKER_R, 0, Math.PI*2);
+    ctx.fillStyle = '#e63946';
+    ctx.fill();
+    return cvs.toDataURL();
+}
+
+// ── 지도 업데이트 ─────────────────────────────────────
 function updateMap() {
-    if (!map) { alert("먼저 API 키로 지도를 활성화하세요."); return; }
+    if (!map) { alert("먼저 지도를 활성화하세요."); return; }
 
     placed.forEach(p => p.marker.setMap(null));
     placed = [];
     clearCanvas();
 
     if (selectedData.length === 0) return;
+
+    const markerImg = new kakao.maps.MarkerImage(
+        makeMarkerImage(),
+        new kakao.maps.Size(MARKER_R*2+4, MARKER_R*2+4),
+        { offset: new kakao.maps.Point(MARKER_R+2, MARKER_R+2) }
+    );
 
     const bounds = new kakao.maps.LatLngBounds();
     let pending = selectedData.length;
@@ -203,7 +233,7 @@ function updateMap() {
         geocoder.addressSearch(d['주소'], (result, status) => {
             if (status === kakao.maps.services.Status.OK) {
                 const pos = new kakao.maps.LatLng(result[0].y, result[0].x);
-                const marker = new kakao.maps.Marker({ map, position: pos });
+                const marker = new kakao.maps.Marker({ map, position: pos, image: markerImg });
                 const { w, h } = measureLabel(d['거래처명']);
                 placed.push({ marker, pos, name: d['거래처명'], lw: w, lh: h });
                 bounds.extend(pos);
@@ -219,21 +249,22 @@ function updateMap() {
 
 function clearCanvas() {
     document.getElementById('label-canvas').innerHTML = '';
+    const lc = document.getElementById('line-canvas');
+    if (lc.getContext) lc.getContext('2d').clearRect(0, 0, MAP_W, MAP_H);
 }
 
+// ── 마커 픽셀 좌표 (컨테이너 기준) ──────────────────
 function toContainerPx(latLng) {
-    const proj = map.getProjection();
+    const proj     = map.getProjection();
     const mapPt    = proj.pointFromCoords(latLng);
     const centerPt = proj.pointFromCoords(map.getCenter());
-    const mapEl = document.getElementById('map');
-    const cx = mapEl.offsetWidth  / 2;
-    const cy = mapEl.offsetHeight / 2;
     return {
-        x: cx + (mapPt.x - centerPt.x),
-        y: cy + (mapPt.y - centerPt.y),
+        x: MAP_W / 2 + (mapPt.x - centerPt.x),
+        y: MAP_H / 2 + (mapPt.y - centerPt.y),
     };
 }
 
+// ── 겹침 해소 ─────────────────────────────────────────
 function scheduleRepos() {
     clearTimeout(reposTimer);
     reposTimer = setTimeout(repositionLabels, 200);
@@ -243,19 +274,20 @@ function repositionLabels() {
     if (!map || placed.length === 0) return;
     clearCanvas();
 
+    const ABOVE = 14; // 마커 중심 위 기본 오프셋
+
     const items = placed.map(p => {
         const { x, y } = toContainerPx(p.pos);
         return {
             name: p.name,
-            mx: x,
-            my: y,
-            lw: p.lw,
-            lh: p.lh,
+            mx: x, my: y,          // 마커 중심 픽셀
+            lw: p.lw, lh: p.lh,
             lx: x - p.lw / 2,
-            ly: y - MARKER_H - p.lh - 2,
+            ly: y - ABOVE - p.lh,
         };
     });
 
+    // 나선형 후보 오프셋
     function spiral(maxR, step) {
         const pts = [[0, 0]];
         for (let r = step; r <= maxR; r += step) {
@@ -267,7 +299,7 @@ function repositionLabels() {
         }
         return pts;
     }
-    const OFFSETS = spiral(150, 6);
+    const OFFSETS = spiral(180, 5);
 
     function overlaps(a, b) {
         return !(a.lx + a.lw + PAD < b.lx ||
@@ -277,47 +309,60 @@ function repositionLabels() {
     }
 
     const settled = [];
-
     items.forEach(cur => {
         const baseLx = cur.mx - cur.lw / 2;
-        const baseLy = cur.my - MARKER_H - cur.lh - 2;
+        const baseLy = cur.my - ABOVE - cur.lh;
         let found = false;
-
         for (const [ox, oy] of OFFSETS) {
             cur.lx = baseLx + ox;
             cur.ly = baseLy + oy;
-            if (settled.every(s => !overlaps(cur, s))) {
-                found = true;
-                break;
-            }
+            if (settled.every(s => !overlaps(cur, s))) { found = true; break; }
         }
         if (!found) { cur.lx = baseLx; cur.ly = baseLy; }
         settled.push(cur);
     });
 
-    const canvas = document.getElementById('label-canvas');
+    // ── 연결선 그리기 (Canvas) ────────────────────────
+    const lc  = document.getElementById('line-canvas');
+    const ctx = lc.getContext('2d');
+    ctx.clearRect(0, 0, MAP_W, MAP_H);
 
     settled.forEach(it => {
-        const markerCx = it.mx;
-        const markerCy = it.my - MARKER_H / 2;
-        const labelCx  = it.lx + it.lw / 2;
-        const labelCy  = it.ly + it.lh / 2;
+        const labelCx = it.lx + it.lw / 2;
+        const labelCy = it.ly + it.lh / 2;
+        const dx = labelCx - it.mx;
+        const dy = labelCy - it.my;
+        const dist = Math.sqrt(dx*dx + dy*dy);
 
-        const dx = labelCx - markerCx;
-        const dy = labelCy - markerCy;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+        // 라벨 엣지 → 마커 엣지 연결점 계산
+        // 라벨에서 가장 가까운 엣지
+        const ex = labelCx - (dx / dist) * (it.lw / 2 + 2);
+        const ey = labelCy - (dy / dist) * (it.lh / 2 + 2);
 
-        if (dist > it.lw / 2 + 6) {
-            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-            const line = document.createElement('div');
-            line.className = 'lbl-line';
-            line.style.left   = markerCx + 'px';
-            line.style.top    = markerCy + 'px';
-            line.style.height = dist + 'px';
-            line.style.transform = `rotate(${angle + 90}deg)`;
-            canvas.appendChild(line);
-        }
+        // 마커 중심에서 라벨 방향으로 마커 반지름만큼
+        const mx2 = it.mx + (dx / dist) * (MARKER_R + 3);
+        const my2 = it.my + (dy / dist) * (MARKER_R + 3);
 
+        // 항상 선 그리기 (짧아도)
+        ctx.beginPath();
+        ctx.moveTo(mx2, my2);
+        ctx.lineTo(ex, ey);
+        ctx.strokeStyle = 'rgba(80,80,80,0.55)';
+        ctx.lineWidth   = 1.2;
+        ctx.setLineDash([3, 3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // 마커 끝에 작은 점
+        ctx.beginPath();
+        ctx.arc(mx2, my2, 2, 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(80,80,80,0.6)';
+        ctx.fill();
+    });
+
+    // ── 라벨 DOM 생성 ─────────────────────────────────
+    const canvas = document.getElementById('label-canvas');
+    settled.forEach(it => {
         const el = document.createElement('div');
         el.className = 'lbl';
         el.style.left = it.lx + 'px';
