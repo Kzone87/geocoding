@@ -20,19 +20,32 @@
         #measure-box { position: fixed; top: -9999px; left: -9999px; visibility: hidden; }
         #label-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
 
+        /* 라벨 기본 스타일 */
         .lbl {
             position: absolute;
             color: #1a1a1a;
-            font-size: 12px;
+            font-size: 11.5px;
             font-weight: 700;
             font-family: 'Malgun Gothic', sans-serif;
             white-space: nowrap;
-            line-height: 1.6;
-            text-shadow:
-                -1.5px -1.5px 0 #fff,  1.5px -1.5px 0 #fff,
-                -1.5px  1.5px 0 #fff,  1.5px  1.5px 0 #fff,
-                -1.5px  0     0 #fff,  1.5px  0     0 #fff,
-                 0     -1.5px 0 #fff,  0      1.5px 0 #fff;
+            line-height: 1.55;
+            background: rgba(255,255,255,0.92);
+            border: 1.5px solid rgba(80,80,80,0.35);
+            border-radius: 4px;
+            padding: 3px 6px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+        }
+        /* 긴 이름(10자+) 줄바꿈 허용 */
+        .lbl.wrap {
+            white-space: normal;
+            max-width: 130px;
+            word-break: keep-all;
+        }
+        /* 클러스터(여러 업체) 라벨 */
+        .lbl.cluster {
+            white-space: normal;
+            max-width: 150px;
+            word-break: keep-all;
         }
 
         @media print {
@@ -87,21 +100,20 @@
 <script>
 let map, geocoder;
 let allData = [], selectedData = [];
-let placed = [];   // 지오코딩 완료된 항목
+let placed = [];
 let reposTimer = null;
 let myCompanyPos = null;
 
 const MY_COMPANY_ADDR = '경기 수원시 영통구 신원로 55';
 const MARKER_R  = 6;
-const GAP       = 8;   // 마커 오른쪽 끝 → 라벨 왼쪽 간격
-const PAD       = 5;   // 라벨 간 여백
-const CLUSTER_D = 50;  // 50m 이내 묶음
+const GAP       = 10;   // 마커 오른쪽 끝 → 라벨 왼쪽 간격
+const PAD       = 6;    // 라벨 간 여백
+const CLUSTER_D = 1000; // ★ 1km 이내 묶음
 
 // ── 초기화 ────────────────────────────────────────────
 function initMap() {
     const key = document.getElementById('apiKeyInput').value.trim();
     if (!key) { alert("API 키를 입력하세요."); return; }
-
     const script = document.createElement('script');
     script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${key}&libraries=services&autoload=false`;
     script.onload = () => {
@@ -112,10 +124,8 @@ function initMap() {
             });
             geocoder = new kakao.maps.services.Geocoder();
             kakao.maps.event.addListener(map, 'idle', scheduleRepos);
-
             document.getElementById('keyStatus').innerText = "✅ 활성화 완료";
             document.getElementById('keyStatus').style.color = "green";
-
             geocoder.addressSearch(MY_COMPANY_ADDR, (result, status) => {
                 if (status === kakao.maps.services.Status.OK) {
                     myCompanyPos = new kakao.maps.LatLng(result[0].y, result[0].x);
@@ -134,13 +144,10 @@ function makeMarkerImg(color, withDot) {
     const c = document.createElement('canvas');
     c.width = c.height = size;
     const ctx = c.getContext('2d');
-    // 흰 테두리
     ctx.beginPath(); ctx.arc(size/2, size/2, MARKER_R+1, 0, Math.PI*2);
     ctx.fillStyle = '#fff'; ctx.fill();
-    // 채우기
     ctx.beginPath(); ctx.arc(size/2, size/2, MARKER_R, 0, Math.PI*2);
     ctx.fillStyle = color; ctx.fill();
-    // 중심 흰 점 (회사 마커용)
     if (withDot) {
         ctx.beginPath(); ctx.arc(size/2, size/2, 2.5, 0, Math.PI*2);
         ctx.fillStyle = '#fff'; ctx.fill();
@@ -217,29 +224,24 @@ function renderSelectedList() {
 }
 
 // ── 라벨 크기 측정 ────────────────────────────────────
-function measureText(text) {
+function measureLabel(names) {
     const mb = document.getElementById('measure-box');
     const el = document.createElement('div');
-    el.className = 'lbl';
-    el.style.position = 'static';
-    el.textContent = text;
-    mb.appendChild(el);
-    const w = el.offsetWidth, h = el.offsetHeight;
-    mb.removeChild(el);
-    return { w, h };
-}
 
-// 여러 줄 라벨 크기 측정
-function measureMultiLine(names) {
-    const mb = document.getElementById('measure-box');
-    const el = document.createElement('div');
-    el.className = 'lbl';
-    el.style.position = 'static';
-    names.forEach((n, i) => {
-        const span = document.createElement('div');
-        span.textContent = (i === 0 ? '● ' : '· ') + n;
-        el.appendChild(span);
-    });
+    if (names.length === 1) {
+        el.className = names[0].length > 10 ? 'lbl wrap' : 'lbl';
+        el.style.position = 'static';
+        el.textContent = names[0];
+    } else {
+        el.className = 'lbl cluster';
+        el.style.position = 'static';
+        names.forEach((n, i) => {
+            const row = document.createElement('div');
+            row.textContent = (i === 0 ? '● ' : '· ') + n;
+            el.appendChild(row);
+        });
+    }
+
     mb.appendChild(el);
     const w = el.offsetWidth, h = el.offsetHeight;
     mb.removeChild(el);
@@ -271,7 +273,7 @@ function updateMap() {
     let pending = selectedData.length;
     const results = [];
 
-    selectedData.forEach((d, i) => {
+    selectedData.forEach(d => {
         geocoder.addressSearch(d['주소'], (result, status) => {
             if (status === kakao.maps.services.Status.OK) {
                 results.push({ name: d['거래처명'], lat: +result[0].y, lng: +result[0].x });
@@ -283,7 +285,7 @@ function updateMap() {
 }
 
 function buildMarkers(results, redImg, bounds) {
-    // ── 50m 이내 클러스터링 ──────────────────────────
+    // ── 1km 이내 클러스터링 ──────────────────────────
     const used = new Array(results.length).fill(false);
     const clusters = [];
 
@@ -297,7 +299,6 @@ function buildMarkers(results, redImg, bounds) {
                 used[j] = true;
             }
         }
-        // 대표 좌표 = 평균
         const lat = group.reduce((s,r) => s + r.lat, 0) / group.length;
         const lng = group.reduce((s,r) => s + r.lng, 0) / group.length;
         clusters.push({ lat, lng, names: group.map(r => r.name) });
@@ -306,9 +307,7 @@ function buildMarkers(results, redImg, bounds) {
     clusters.forEach(cl => {
         const pos = new kakao.maps.LatLng(cl.lat, cl.lng);
         const marker = new kakao.maps.Marker({ map, position: pos, image: redImg });
-        const { w, h } = cl.names.length === 1
-            ? measureText(cl.names[0])
-            : measureMultiLine(cl.names);
+        const { w, h } = measureLabel(cl.names);
         placed.push({ marker, pos, names: cl.names, lw: w, lh: h });
         bounds.extend(pos);
     });
@@ -341,6 +340,13 @@ function scheduleRepos() {
     reposTimer = setTimeout(repositionLabels, 200);
 }
 
+// ── 클러스터 중심 계산 ────────────────────────────────
+function clusterCentroid(items) {
+    const cx = items.reduce((s,it) => s + it.mx, 0) / items.length;
+    const cy = items.reduce((s,it) => s + it.my, 0) / items.length;
+    return { cx, cy };
+}
+
 // ── 겹침 해소 + 렌더링 ───────────────────────────────
 function repositionLabels() {
     if (!map || placed.length === 0) return;
@@ -351,7 +357,6 @@ function repositionLabels() {
     const lc = document.getElementById('line-canvas');
     lc.width = W; lc.height = H;
 
-    // 각 항목의 초기 위치: 마커 오른쪽
     const items = placed.map(p => {
         const { x, y } = toPx(p.pos);
         return {
@@ -363,14 +368,8 @@ function repositionLabels() {
         };
     });
 
-    // ── 마커 충돌 박스 (마커끼리 겹침 방지용) ────────
-    // 마커는 고정이므로 단순히 반지름 기준
-    function markerOverlap(a, b) {
-        const dx = a.mx - b.mx, dy = a.my - b.my;
-        return Math.sqrt(dx*dx + dy*dy) < (MARKER_R*2 + 3);
-    }
+    const { cx: globalCx, cy: globalCy } = clusterCentroid(items);
 
-    // ── 라벨 박스 겹침 ────────────────────────────────
     function labelOverlap(a, b) {
         return !(a.lx + a.lw + PAD < b.lx ||
                  b.lx + b.lw + PAD < a.lx ||
@@ -378,100 +377,120 @@ function repositionLabels() {
                  b.ly + b.lh + PAD < a.ly);
     }
 
-    // 라벨이 마커를 가리는지 (다른 마커와 라벨 영역 충돌)
     function labelHitsMarker(label, markerItem) {
-        // 마커를 작은 사각형으로 근사
-        const mr = MARKER_R + 2;
+        const mr = MARKER_R + 3;
         return !(label.lx + label.lw + PAD < markerItem.mx - mr ||
                  markerItem.mx + mr + PAD  < label.lx ||
                  label.ly + label.lh + PAD < markerItem.my - mr ||
                  markerItem.my + mr + PAD  < label.ly);
     }
 
-    // ── 배치: 오른쪽으로만 이동 ──────────────────────
-    // 오른쪽으로 STEP씩 밀면서 빈 자리 탐색
-    // y축은 마커 중심 기준 ±절반 범위 내에서 미세 조정
-    const STEP    = 4;
-    const MAX_OX  = 300;  // 최대 오른쪽 이동
-    const Y_RANGE = 40;   // y축 탐색 범위
+    function clusterOverlapScore(label) {
+        const allMx = items.map(it => it.mx);
+        const allMy = items.map(it => it.my);
+        const minMx = Math.min(...allMx) - MARKER_R;
+        const maxMx = Math.max(...allMx) + MARKER_R;
+        const minMy = Math.min(...allMy) - MARKER_R;
+        const maxMy = Math.max(...allMy) + MARKER_R;
+        const ox = Math.max(0, Math.min(label.lx + label.lw, maxMx) - Math.max(label.lx, minMx));
+        const oy = Math.max(0, Math.min(label.ly + label.lh, maxMy) - Math.max(label.ly, minMy));
+        return ox * oy;
+    }
 
+    const STEP    = 5;
+    const MAX_OX  = 320;
+    const Y_RANGE = 80;
     const settled = [];
 
     items.forEach(cur => {
+        const dyFromCenter = cur.my - globalCy;
+        const initYBias = dyFromCenter > 0 ? 10 : (dyFromCenter < 0 ? -10 : 0);
         const baseX = cur.mx + MARKER_R + GAP;
-        const baseY = cur.my - cur.lh / 2;
-        let placed_ok = false;
+        const baseY = cur.my - cur.lh / 2 + initYBias;
 
-        outer:
+        let bestScore = Infinity;
+        let bestLx = baseX, bestLy = baseY;
+
         for (let ox = 0; ox <= MAX_OX; ox += STEP) {
-            for (let oy = 0; oy <= Y_RANGE; oy += STEP) {
-                // y를 위아래 교대로 탐색
-                for (const sy of oy === 0 ? [0] : [-oy, oy]) {
-                    cur.lx = baseX + ox;
-                    cur.ly = baseY + sy;
+            for (let absOy = 0; absOy <= Y_RANGE; absOy += STEP) {
+                const oyList = absOy === 0 ? [0] : [initYBias < 0 ? -absOy : absOy, initYBias < 0 ? absOy : -absOy];
+                for (const oy of oyList) {
+                    const testLx = baseX + ox;
+                    const testLy = baseY + oy;
+                    const testItem = { ...cur, lx: testLx, ly: testLy };
 
-                    // 1) 다른 라벨과 겹침?
-                    const lblOk = settled.every(s => !labelOverlap(cur, s));
-                    if (!lblOk) continue;
+                    if (settled.some(s => labelOverlap(testItem, s))) continue;
+                    if (items.some(other => other !== cur && labelHitsMarker(testItem, other))) continue;
 
-                    // 2) 다른 마커를 라벨이 덮음?
-                    const mrkOk = items.every(other => {
-                        if (other === cur) return true;
-                        return !labelHitsMarker(cur, other);
-                    });
-                    if (!mrkOk) continue;
-
-                    placed_ok = true;
-                    break outer;
+                    const score = clusterOverlapScore(testItem) + ox * 0.5;
+                    if (score < bestScore) {
+                        bestScore = score;
+                        bestLx = testLx;
+                        bestLy = testLy;
+                        if (score === ox * 0.5) { break; }
+                    }
                 }
+                if (bestScore === (ox * 0.5)) break;
             }
+            if (bestScore === 0) break;
         }
 
-        if (!placed_ok) {
-            cur.lx = baseX;
-            cur.ly = baseY;
-        }
+        cur.lx = bestLx;
+        cur.ly = bestLy;
         settled.push(cur);
     });
 
-    // ── Canvas 연결선 ─────────────────────────────────
+    // ── Canvas 연결선 (명확하게 강화) ───────────────────
     const ctx = lc.getContext('2d');
 
     settled.forEach(it => {
-        // 라벨 왼쪽 중간 → 마커 오른쪽 접점
         const labelLx = it.lx;
         const labelLy = it.ly + it.lh / 2;
-
-        // 마커 오른쪽 끝 점
         const mrkRx = it.mx + MARKER_R + 1;
         const mrkRy = it.my;
-
-        // 꺾인 선: 마커 오른쪽 → 수평 → 라벨 왼쪽
-        const midX = it.lx - 4; // 라벨 바로 왼쪽에서 꺾임
+        const elbowX = it.lx - 6;
 
         ctx.beginPath();
         ctx.moveTo(mrkRx, mrkRy);
 
-        if (Math.abs(mrkRy - labelLy) < 3) {
-            // 거의 수평이면 직선
+        if (Math.abs(mrkRy - labelLy) < 4) {
             ctx.lineTo(labelLx, labelLy);
         } else {
-            // ㄱ자 꺾인 선
-            ctx.lineTo(midX, mrkRy);
-            ctx.lineTo(midX, labelLy);
+            ctx.lineTo(elbowX, mrkRy);
+            ctx.lineTo(elbowX, labelLy);
             ctx.lineTo(labelLx, labelLy);
         }
 
-        ctx.strokeStyle = 'rgba(50,50,50,0.5)';
-        ctx.lineWidth   = 1;
-        ctx.setLineDash([3, 3]);
+        // 흰 배경 테두리선
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+        ctx.lineWidth   = 4;
+        ctx.setLineDash([]);
+        ctx.stroke();
+
+        // 진한 점선
+        ctx.strokeStyle = 'rgba(30,30,30,0.75)';
+        ctx.lineWidth   = 1.8;
+        ctx.setLineDash([5, 3]);
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // 마커 접점 작은 원
+        // 마커 접점 원
         ctx.beginPath();
-        ctx.arc(mrkRx, mrkRy, 2, 0, Math.PI*2);
-        ctx.fillStyle = 'rgba(50,50,50,0.5)';
+        ctx.arc(mrkRx, mrkRy, 3.5, 0, Math.PI*2);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(mrkRx, mrkRy, 2.5, 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(30,30,30,0.8)';
+        ctx.fill();
+
+        // 라벨 접점 삼각형 화살표
+        ctx.beginPath();
+        ctx.moveTo(labelLx, labelLy);
+        ctx.lineTo(labelLx - 6, labelLy - 4);
+        ctx.lineTo(labelLx - 6, labelLy + 4);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(30,30,30,0.7)';
         ctx.fill();
     });
 
@@ -479,19 +498,21 @@ function repositionLabels() {
     const canvas = document.getElementById('label-canvas');
     settled.forEach(it => {
         const el = document.createElement('div');
-        el.className = 'lbl';
-        el.style.left = it.lx + 'px';
-        el.style.top  = it.ly + 'px';
 
         if (it.names.length === 1) {
+            el.className = it.names[0].length > 10 ? 'lbl wrap' : 'lbl';
             el.textContent = it.names[0];
         } else {
+            el.className = 'lbl cluster';
             it.names.forEach((n, i) => {
                 const row = document.createElement('div');
                 row.textContent = (i === 0 ? '● ' : '· ') + n;
                 el.appendChild(row);
             });
         }
+
+        el.style.left = it.lx + 'px';
+        el.style.top  = it.ly + 'px';
         canvas.appendChild(el);
     });
 }
