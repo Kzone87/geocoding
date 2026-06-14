@@ -27,7 +27,7 @@
             font-weight: 700;
             font-family: 'Malgun Gothic', sans-serif;
             white-space: nowrap;
-            line-height: 1;
+            line-height: 1.6;
             text-shadow:
                 -1.5px -1.5px 0 #fff,  1.5px -1.5px 0 #fff,
                 -1.5px  1.5px 0 #fff,  1.5px  1.5px 0 #fff,
@@ -35,52 +35,22 @@
                  0     -1.5px 0 #fff,  0      1.5px 0 #fff;
         }
 
-        /* ── 인쇄 ── */
         @media print {
-            @page {
-                size: A4 landscape;
-                margin: 0;
-            }
-            html, body {
-                margin: 0;
-                padding: 0;
-                width: 297mm;
-                height: 210mm;
-                overflow: hidden;
-                background: #fff;
-            }
-            /* 패널·기타 모두 숨김 */
-            .panel, .wrapper { display: block !important; }
+            @page { size: A4 landscape; margin: 0; }
+            html, body { margin: 0; padding: 0; overflow: hidden; background: #fff; }
             .panel { display: none !important; }
-            .wrapper { margin: 0; padding: 0; gap: 0; }
-
+            .wrapper { display: block; margin: 0; padding: 0; }
             #map-wrap {
                 position: fixed !important;
-                top: 0 !important;
-                left: 0 !important;
-                width: 297mm !important;
-                height: 210mm !important;
-                margin: 0 !important;
-                padding: 0 !important;
+                top: 0 !important; left: 0 !important;
+                width: 297mm !important; height: 210mm !important;
             }
-            #map {
-                width: 297mm !important;
-                height: 210mm !important;
-                border: none !important;
-            }
-            #line-canvas {
-                width: 297mm !important;
-                height: 210mm !important;
-            }
-            #label-canvas {
-                width: 297mm !important;
-                height: 210mm !important;
-            }
+            #map { width: 297mm !important; height: 210mm !important; border: none !important; }
+            #line-canvas, #label-canvas { width: 297mm !important; height: 210mm !important; }
         }
     </style>
 </head>
 <body>
-
 <div id="measure-box"></div>
 
 <div class="wrapper">
@@ -89,7 +59,7 @@
             <h3>① API 키 입력</h3>
             <input type="text" id="apiKeyInput" placeholder="카카오 JS 키" style="width:180px">
             <button onclick="initMap()">활성화</button>
-            <p id="keyStatus" style="color:red; font-size:12px; margin-top:6px;">(미활성화)</p>
+            <p id="keyStatus" style="color:red;font-size:12px;margin-top:6px;">(미활성화)</p>
         </div>
         <div class="box">
             <h3>② 파일 업로드</h3>
@@ -103,11 +73,11 @@
         <div class="box">
             <h3>④ 표시 목록</h3>
             <div id="selectedList"></div>
-            <button onclick="doPrint()" style="margin-top:10px; background:#28a745; width:100%; padding:8px;">🖨 A4 인쇄</button>
+            <button onclick="window.print()" style="margin-top:10px;background:#28a745;width:100%;padding:8px;">🖨 A4 인쇄</button>
         </div>
     </div>
 
-    <div id="map-wrap" style="position:relative; flex-shrink:0;">
+    <div id="map-wrap" style="position:relative;flex-shrink:0;">
         <div id="map"></div>
         <canvas id="line-canvas" style="position:absolute;top:0;left:0;pointer-events:none;z-index:9;"></canvas>
         <div id="label-canvas"></div>
@@ -117,33 +87,20 @@
 <script>
 let map, geocoder;
 let allData = [], selectedData = [];
-let placed = [];
+let placed = [];   // 지오코딩 완료된 항목
 let reposTimer = null;
 let myCompanyPos = null;
 
 const MY_COMPANY_ADDR = '경기 수원시 영통구 신원로 55';
-const MAP_W    = 1122;
-const MAP_H    = 794;
-const MARKER_R = 6;
-const PAD      = 6;
-const GAP      = 6;
+const MARKER_R  = 6;
+const GAP       = 8;   // 마커 오른쪽 끝 → 라벨 왼쪽 간격
+const PAD       = 5;   // 라벨 간 여백
+const CLUSTER_D = 50;  // 50m 이내 묶음
 
-// ── 인쇄 ─────────────────────────────────────────────
-// 인쇄 직전 canvas를 A4 비율로 재렌더링 후 출력
-function doPrint() {
-    // 인쇄 시 지도 크기가 297mm×210mm로 바뀌므로
-    // label/line canvas도 다시 그려야 정확함
-    // → 간단히 바로 print() 호출 (CSS에서 처리)
-    window.print();
-}
-
-// ── 초기화 ───────────────────────────────────────────
+// ── 초기화 ────────────────────────────────────────────
 function initMap() {
     const key = document.getElementById('apiKeyInput').value.trim();
     if (!key) { alert("API 키를 입력하세요."); return; }
-
-    const lc = document.getElementById('line-canvas');
-    lc.width = MAP_W; lc.height = MAP_H;
 
     const script = document.createElement('script');
     script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${key}&libraries=services&autoload=false`;
@@ -163,8 +120,7 @@ function initMap() {
                 if (status === kakao.maps.services.Status.OK) {
                     myCompanyPos = new kakao.maps.LatLng(result[0].y, result[0].x);
                     map.setCenter(myCompanyPos);
-                    map.setLevel(9);
-                    placeMyCompanyMarker();
+                    placeMyMarker();
                 }
             });
         });
@@ -172,55 +128,47 @@ function initMap() {
     document.head.appendChild(script);
 }
 
-function makeBlueMarkerImage() {
+// ── 마커 이미지 생성 ──────────────────────────────────
+function makeMarkerImg(color, withDot) {
     const size = (MARKER_R + 2) * 2;
-    const cvs = document.createElement('canvas');
-    cvs.width = cvs.height = size;
-    const ctx = cvs.getContext('2d');
-    ctx.beginPath();
-    ctx.arc(size/2, size/2, MARKER_R + 1, 0, Math.PI*2);
-    ctx.fillStyle = '#ffffff';
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(size/2, size/2, MARKER_R, 0, Math.PI*2);
-    ctx.fillStyle = '#1971c2';
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(size/2, size/2, 2.5, 0, Math.PI*2);
-    ctx.fillStyle = '#ffffff';
-    ctx.fill();
-    return cvs.toDataURL();
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const ctx = c.getContext('2d');
+    // 흰 테두리
+    ctx.beginPath(); ctx.arc(size/2, size/2, MARKER_R+1, 0, Math.PI*2);
+    ctx.fillStyle = '#fff'; ctx.fill();
+    // 채우기
+    ctx.beginPath(); ctx.arc(size/2, size/2, MARKER_R, 0, Math.PI*2);
+    ctx.fillStyle = color; ctx.fill();
+    // 중심 흰 점 (회사 마커용)
+    if (withDot) {
+        ctx.beginPath(); ctx.arc(size/2, size/2, 2.5, 0, Math.PI*2);
+        ctx.fillStyle = '#fff'; ctx.fill();
+    }
+    return c.toDataURL();
 }
 
-function makeRedMarkerImage() {
-    const size = (MARKER_R + 2) * 2;
-    const cvs = document.createElement('canvas');
-    cvs.width = cvs.height = size;
-    const ctx = cvs.getContext('2d');
-    ctx.beginPath();
-    ctx.arc(size/2, size/2, MARKER_R + 1, 0, Math.PI*2);
-    ctx.fillStyle = '#ffffff';
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(size/2, size/2, MARKER_R, 0, Math.PI*2);
-    ctx.fillStyle = '#e63946';
-    ctx.fill();
-    return cvs.toDataURL();
-}
-
-function placeMyCompanyMarker() {
-    if (!myCompanyPos) return;
-    const img = new kakao.maps.MarkerImage(
-        makeBlueMarkerImage(),
-        new kakao.maps.Size((MARKER_R+2)*2, (MARKER_R+2)*2),
-        { offset: new kakao.maps.Point(MARKER_R+2, MARKER_R+2) }
+function kakaoMarkerImage(dataUrl) {
+    const s = (MARKER_R+2)*2;
+    return new kakao.maps.MarkerImage(
+        dataUrl, new kakao.maps.Size(s, s),
+        { offset: new kakao.maps.Point(s/2, s/2) }
     );
-    new kakao.maps.Marker({ map, position: myCompanyPos, image: img, zIndex: 10 });
 }
 
-document.getElementById('excelFile').onchange = (e) => {
+function placeMyMarker() {
+    if (!myCompanyPos) return;
+    new kakao.maps.Marker({
+        map, position: myCompanyPos,
+        image: kakaoMarkerImage(makeMarkerImg('#1971c2', true)),
+        zIndex: 10
+    });
+}
+
+// ── 파일 업로드 ───────────────────────────────────────
+document.getElementById('excelFile').onchange = e => {
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = ev => {
         const wb = XLSX.read(ev.target.result, { type: 'array' });
         allData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
         alert(`✅ 로드 완료 — 총 ${allData.length}개 거래처`);
@@ -228,13 +176,13 @@ document.getElementById('excelFile').onchange = (e) => {
     reader.readAsArrayBuffer(e.target.files[0]);
 };
 
-document.getElementById('searchInput').oninput = (e) => {
+// ── 검색 ──────────────────────────────────────────────
+document.getElementById('searchInput').oninput = e => {
     const val = e.target.value;
     const list = document.getElementById('searchList');
     list.innerHTML = '';
     if (!val) return;
-    allData
-        .filter(d => d['거래처명'] && d['거래처명'].includes(val))
+    allData.filter(d => d['거래처명'] && d['거래처명'].includes(val))
         .forEach(d => {
             const idx = allData.indexOf(d);
             const div = document.createElement('div');
@@ -268,19 +216,47 @@ function renderSelectedList() {
     });
 }
 
-function measureLabel(text) {
+// ── 라벨 크기 측정 ────────────────────────────────────
+function measureText(text) {
     const mb = document.getElementById('measure-box');
     const el = document.createElement('div');
     el.className = 'lbl';
     el.style.position = 'static';
     el.textContent = text;
     mb.appendChild(el);
-    const w = el.offsetWidth;
-    const h = el.offsetHeight;
+    const w = el.offsetWidth, h = el.offsetHeight;
     mb.removeChild(el);
     return { w, h };
 }
 
+// 여러 줄 라벨 크기 측정
+function measureMultiLine(names) {
+    const mb = document.getElementById('measure-box');
+    const el = document.createElement('div');
+    el.className = 'lbl';
+    el.style.position = 'static';
+    names.forEach((n, i) => {
+        const span = document.createElement('div');
+        span.textContent = (i === 0 ? '● ' : '· ') + n;
+        el.appendChild(span);
+    });
+    mb.appendChild(el);
+    const w = el.offsetWidth, h = el.offsetHeight;
+    mb.removeChild(el);
+    return { w, h };
+}
+
+// ── 거리 계산 (m) ─────────────────────────────────────
+function distM(lat1, lng1, lat2, lng2) {
+    const R = 6371000;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat/2)**2 +
+              Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLng/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// ── 지도 업데이트 ─────────────────────────────────────
 function updateMap() {
     if (!map) { alert("먼저 지도를 활성화하세요."); return; }
     placed.forEach(p => p.marker.setMap(null));
@@ -288,49 +264,76 @@ function updateMap() {
     clearCanvas();
     if (selectedData.length === 0) return;
 
-    const redImg = new kakao.maps.MarkerImage(
-        makeRedMarkerImage(),
-        new kakao.maps.Size((MARKER_R+2)*2, (MARKER_R+2)*2),
-        { offset: new kakao.maps.Point(MARKER_R+2, MARKER_R+2) }
-    );
-
+    const redImg = kakaoMarkerImage(makeMarkerImg('#e63946', false));
     const bounds = new kakao.maps.LatLngBounds();
     if (myCompanyPos) bounds.extend(myCompanyPos);
 
     let pending = selectedData.length;
-    selectedData.forEach(d => {
+    const results = [];
+
+    selectedData.forEach((d, i) => {
         geocoder.addressSearch(d['주소'], (result, status) => {
             if (status === kakao.maps.services.Status.OK) {
-                const pos = new kakao.maps.LatLng(result[0].y, result[0].x);
-                const marker = new kakao.maps.Marker({ map, position: pos, image: redImg });
-                const { w, h } = measureLabel(d['거래처명']);
-                placed.push({ marker, pos, name: d['거래처명'], lw: w, lh: h });
-                bounds.extend(pos);
+                results.push({ name: d['거래처명'], lat: +result[0].y, lng: +result[0].x });
             }
             pending--;
-            if (pending === 0) {
-                if (!bounds.isEmpty()) map.setBounds(bounds);
-                setTimeout(repositionLabels, 600);
-            }
+            if (pending === 0) buildMarkers(results, redImg, bounds);
         });
     });
 }
 
+function buildMarkers(results, redImg, bounds) {
+    // ── 50m 이내 클러스터링 ──────────────────────────
+    const used = new Array(results.length).fill(false);
+    const clusters = [];
+
+    for (let i = 0; i < results.length; i++) {
+        if (used[i]) continue;
+        const group = [results[i]];
+        used[i] = true;
+        for (let j = i+1; j < results.length; j++) {
+            if (!used[j] && distM(results[i].lat, results[i].lng, results[j].lat, results[j].lng) <= CLUSTER_D) {
+                group.push(results[j]);
+                used[j] = true;
+            }
+        }
+        // 대표 좌표 = 평균
+        const lat = group.reduce((s,r) => s + r.lat, 0) / group.length;
+        const lng = group.reduce((s,r) => s + r.lng, 0) / group.length;
+        clusters.push({ lat, lng, names: group.map(r => r.name) });
+    }
+
+    clusters.forEach(cl => {
+        const pos = new kakao.maps.LatLng(cl.lat, cl.lng);
+        const marker = new kakao.maps.Marker({ map, position: pos, image: redImg });
+        const { w, h } = cl.names.length === 1
+            ? measureText(cl.names[0])
+            : measureMultiLine(cl.names);
+        placed.push({ marker, pos, names: cl.names, lw: w, lh: h });
+        bounds.extend(pos);
+    });
+
+    if (!bounds.isEmpty()) map.setBounds(bounds);
+    setTimeout(repositionLabels, 600);
+}
+
+// ── Canvas 초기화 ─────────────────────────────────────
 function clearCanvas() {
     document.getElementById('label-canvas').innerHTML = '';
     const lc = document.getElementById('line-canvas');
-    if (lc.getContext) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
+    const mapEl = document.getElementById('map');
+    lc.width  = mapEl.offsetWidth;
+    lc.height = mapEl.offsetHeight;
+    lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
 }
 
-function toContainerPx(latLng) {
-    const proj     = map.getProjection();
-    const mapPt    = proj.pointFromCoords(latLng);
-    const centerPt = proj.pointFromCoords(map.getCenter());
-    const mapEl    = document.getElementById('map');
-    return {
-        x: mapEl.offsetWidth  / 2 + (mapPt.x - centerPt.x),
-        y: mapEl.offsetHeight / 2 + (mapPt.y - centerPt.y),
-    };
+// ── 마커 → 컨테이너 픽셀 좌표 ───────────────────────
+function toPx(latLng) {
+    const proj = map.getProjection();
+    const mp   = proj.pointFromCoords(latLng);
+    const cp   = proj.pointFromCoords(map.getCenter());
+    const el   = document.getElementById('map');
+    return { x: el.offsetWidth/2 + (mp.x - cp.x), y: el.offsetHeight/2 + (mp.y - cp.y) };
 }
 
 function scheduleRepos() {
@@ -338,20 +341,21 @@ function scheduleRepos() {
     reposTimer = setTimeout(repositionLabels, 200);
 }
 
+// ── 겹침 해소 + 렌더링 ───────────────────────────────
 function repositionLabels() {
     if (!map || placed.length === 0) return;
     clearCanvas();
 
     const mapEl = document.getElementById('map');
-    const W = mapEl.offsetWidth;
-    const H = mapEl.offsetHeight;
+    const W = mapEl.offsetWidth, H = mapEl.offsetHeight;
     const lc = document.getElementById('line-canvas');
     lc.width = W; lc.height = H;
 
+    // 각 항목의 초기 위치: 마커 오른쪽
     const items = placed.map(p => {
-        const { x, y } = toContainerPx(p.pos);
+        const { x, y } = toPx(p.pos);
         return {
-            name: p.name,
+            names: p.names,
             mx: x, my: y,
             lw: p.lw, lh: p.lh,
             lx: x + MARKER_R + GAP,
@@ -359,88 +363,135 @@ function repositionLabels() {
         };
     });
 
-    function candidates(it) {
-        const { mx, my, lw, lh } = it;
-        const r = MARKER_R + GAP;
-        return [
-            { lx: mx + r,      ly: my - lh / 2 },
-            { lx: mx - r - lw, ly: my - lh / 2 },
-            { lx: mx - lw / 2, ly: my - r - lh },
-            { lx: mx - lw / 2, ly: my + r },
-            { lx: mx + r,      ly: my - lh - 2 },
-            { lx: mx + r,      ly: my + 2 },
-            { lx: mx - r - lw, ly: my - lh - 2 },
-            { lx: mx - r - lw, ly: my + 2 },
-            ...spiral(r + 10, 160, 7).map(([ox, oy]) => ({
-                lx: mx + ox - lw / 2,
-                ly: my + oy - lh / 2,
-            })),
-        ];
+    // ── 마커 충돌 박스 (마커끼리 겹침 방지용) ────────
+    // 마커는 고정이므로 단순히 반지름 기준
+    function markerOverlap(a, b) {
+        const dx = a.mx - b.mx, dy = a.my - b.my;
+        return Math.sqrt(dx*dx + dy*dy) < (MARKER_R*2 + 3);
     }
 
-    function spiral(startR, maxR, step) {
-        const pts = [];
-        for (let r = startR; r <= maxR; r += step) {
-            const n = Math.max(8, Math.round(2 * Math.PI * r / step));
-            for (let i = 0; i < n; i++) {
-                const a = (2 * Math.PI * i) / n;
-                pts.push([Math.cos(a) * r, Math.sin(a) * r]);
-            }
-        }
-        return pts;
-    }
-
-    function overlaps(a, b) {
+    // ── 라벨 박스 겹침 ────────────────────────────────
+    function labelOverlap(a, b) {
         return !(a.lx + a.lw + PAD < b.lx ||
                  b.lx + b.lw + PAD < a.lx ||
                  a.ly + a.lh + PAD < b.ly ||
                  b.ly + b.lh + PAD < a.ly);
     }
 
+    // 라벨이 마커를 가리는지 (다른 마커와 라벨 영역 충돌)
+    function labelHitsMarker(label, markerItem) {
+        // 마커를 작은 사각형으로 근사
+        const mr = MARKER_R + 2;
+        return !(label.lx + label.lw + PAD < markerItem.mx - mr ||
+                 markerItem.mx + mr + PAD  < label.lx ||
+                 label.ly + label.lh + PAD < markerItem.my - mr ||
+                 markerItem.my + mr + PAD  < label.ly);
+    }
+
+    // ── 배치: 오른쪽으로만 이동 ──────────────────────
+    // 오른쪽으로 STEP씩 밀면서 빈 자리 탐색
+    // y축은 마커 중심 기준 ±절반 범위 내에서 미세 조정
+    const STEP    = 4;
+    const MAX_OX  = 300;  // 최대 오른쪽 이동
+    const Y_RANGE = 40;   // y축 탐색 범위
+
     const settled = [];
+
     items.forEach(cur => {
-        const cands = candidates(cur);
-        let found = false;
-        for (const { lx, ly } of cands) {
-            cur.lx = lx; cur.ly = ly;
-            if (settled.every(s => !overlaps(cur, s))) { found = true; break; }
+        const baseX = cur.mx + MARKER_R + GAP;
+        const baseY = cur.my - cur.lh / 2;
+        let placed_ok = false;
+
+        outer:
+        for (let ox = 0; ox <= MAX_OX; ox += STEP) {
+            for (let oy = 0; oy <= Y_RANGE; oy += STEP) {
+                // y를 위아래 교대로 탐색
+                for (const sy of oy === 0 ? [0] : [-oy, oy]) {
+                    cur.lx = baseX + ox;
+                    cur.ly = baseY + sy;
+
+                    // 1) 다른 라벨과 겹침?
+                    const lblOk = settled.every(s => !labelOverlap(cur, s));
+                    if (!lblOk) continue;
+
+                    // 2) 다른 마커를 라벨이 덮음?
+                    const mrkOk = items.every(other => {
+                        if (other === cur) return true;
+                        return !labelHitsMarker(cur, other);
+                    });
+                    if (!mrkOk) continue;
+
+                    placed_ok = true;
+                    break outer;
+                }
+            }
         }
-        if (!found) { cur.lx = cur.mx + MARKER_R + GAP; cur.ly = cur.my - cur.lh / 2; }
+
+        if (!placed_ok) {
+            cur.lx = baseX;
+            cur.ly = baseY;
+        }
         settled.push(cur);
     });
 
-    // 연결선
+    // ── Canvas 연결선 ─────────────────────────────────
     const ctx = lc.getContext('2d');
+
     settled.forEach(it => {
-        const labelCx = it.lx + it.lw / 2;
-        const labelCy = it.ly + it.lh / 2;
-        const dx = labelCx - it.mx;
-        const dy = labelCy - it.my;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        if (dist < 2) return;
-        const ux = dx / dist, uy = dy / dist;
-        const sx = it.mx + ux * (MARKER_R + 2);
-        const sy = it.my + uy * (MARKER_R + 2);
-        const ex = labelCx - ux * (it.lw / 2 + 1);
-        const ey = labelCy - uy * (it.lh / 2 + 1);
+        // 라벨 왼쪽 중간 → 마커 오른쪽 접점
+        const labelLx = it.lx;
+        const labelLy = it.ly + it.lh / 2;
+
+        // 마커 오른쪽 끝 점
+        const mrkRx = it.mx + MARKER_R + 1;
+        const mrkRy = it.my;
+
+        // 꺾인 선: 마커 오른쪽 → 수평 → 라벨 왼쪽
+        const midX = it.lx - 4; // 라벨 바로 왼쪽에서 꺾임
+
         ctx.beginPath();
-        ctx.moveTo(sx, sy);
-        ctx.lineTo(ex, ey);
-        ctx.strokeStyle = 'rgba(60,60,60,0.45)';
-        ctx.lineWidth = 1;
+        ctx.moveTo(mrkRx, mrkRy);
+
+        if (Math.abs(mrkRy - labelLy) < 3) {
+            // 거의 수평이면 직선
+            ctx.lineTo(labelLx, labelLy);
+        } else {
+            // ㄱ자 꺾인 선
+            ctx.lineTo(midX, mrkRy);
+            ctx.lineTo(midX, labelLy);
+            ctx.lineTo(labelLx, labelLy);
+        }
+
+        ctx.strokeStyle = 'rgba(50,50,50,0.5)';
+        ctx.lineWidth   = 1;
         ctx.setLineDash([3, 3]);
         ctx.stroke();
         ctx.setLineDash([]);
+
+        // 마커 접점 작은 원
+        ctx.beginPath();
+        ctx.arc(mrkRx, mrkRy, 2, 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(50,50,50,0.5)';
+        ctx.fill();
     });
 
-    // 라벨
+    // ── 라벨 DOM ─────────────────────────────────────
     const canvas = document.getElementById('label-canvas');
     settled.forEach(it => {
         const el = document.createElement('div');
         el.className = 'lbl';
         el.style.left = it.lx + 'px';
         el.style.top  = it.ly + 'px';
-        el.textContent = it.name;
+
+        if (it.names.length === 1) {
+            el.textContent = it.names[0];
+        } else {
+            it.names.forEach((n, i) => {
+                const row = document.createElement('div');
+                row.textContent = (i === 0 ? '● ' : '· ') + n;
+                el.appendChild(row);
+            });
+        }
         canvas.appendChild(el);
     });
 }
